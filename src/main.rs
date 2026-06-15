@@ -8,7 +8,10 @@ fn main() {
 
     match parse_args(args) {
         Ok(invocation) => match execute_invocation(&invocation) {
-            Ok(response) => println!("{:?}", response.meta.aggregate_status),
+            Ok(response) => {
+                println!("{}", render_response(&response, invocation.output));
+                std::process::exit(exit_code_for_response(&response));
+            }
             Err(error) => {
                 eprintln!("gws: {}", error.message);
                 std::process::exit(1);
@@ -157,6 +160,138 @@ fn execute_invocation(invocation: &CliInvocation) -> Result<gws_core::ResponseEn
         }
     };
     response.map_err(|error| CliError::new(error.to_string()))
+}
+
+fn render_response(response: &gws_core::ResponseEnvelope, output: OutputMode) -> String {
+    match output {
+        OutputMode::Human => render_human_response(response),
+        OutputMode::Json => response_json(response).to_string(),
+        OutputMode::Jsonl => render_jsonl_stream(response, &[], None),
+    }
+}
+
+fn render_human_response(response: &gws_core::ResponseEnvelope) -> String {
+    let mut lines = vec![format!("status: {:?}", response.meta.aggregate_status)];
+    for member in &response.members {
+        let mut line = format!(
+            "{} {} {:?}",
+            member.member_id, member.member_path, member.status
+        );
+        if let Some(error) = &member.error {
+            line.push_str(&format!(" {:?}: {}", error.code, error.message));
+        }
+        lines.push(line);
+    }
+    for error in &response.errors {
+        lines.push(format!("{:?}: {}", error.code, error.message));
+    }
+    lines.join("\n")
+}
+
+fn render_jsonl_stream(
+    response: &gws_core::ResponseEnvelope,
+    events: &[gws_core::OperationEvent],
+    result: Option<&gws_core::OperationResult>,
+) -> String {
+    let mut lines = Vec::with_capacity(1 + events.len() + usize::from(result.is_some()));
+    lines.push(response_json(response).to_string());
+    lines.extend(events.iter().map(|event| event_json(event).to_string()));
+    if let Some(result) = result {
+        lines.push(result_json(result).to_string());
+    }
+    lines.join("\n")
+}
+
+fn exit_code_for_response(response: &gws_core::ResponseEnvelope) -> i32 {
+    match response.meta.aggregate_status {
+        gws_core::AggregateStatus::Accepted
+        | gws_core::AggregateStatus::Ok
+        | gws_core::AggregateStatus::Noop => 0,
+        gws_core::AggregateStatus::Rejected => 2,
+        gws_core::AggregateStatus::Partial | gws_core::AggregateStatus::Failed => 1,
+    }
+}
+
+fn response_json(response: &gws_core::ResponseEnvelope) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "response",
+        "meta": response_meta_json(&response.meta),
+        "members": response.members.iter().map(member_json).collect::<Vec<_>>(),
+        "errors": response.errors.iter().map(error_json).collect::<Vec<_>>(),
+    })
+}
+
+fn result_json(result: &gws_core::OperationResult) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "result",
+        "operation_id": result.operation_id,
+        "request_id": result.request_id,
+        "action": format!("{:?}", result.action),
+        "aggregate_status": format!("{:?}", result.aggregate_status),
+        "started_at_ms": result.started_at_ms,
+        "finished_at_ms": result.finished_at_ms,
+        "members": result.members.iter().map(member_json).collect::<Vec<_>>(),
+        "errors": result.errors.iter().map(error_json).collect::<Vec<_>>(),
+    })
+}
+
+fn event_json(event: &gws_core::OperationEvent) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "event",
+        "operation_id": event.operation_id,
+        "request_id": event.request_id,
+        "sequence": event.sequence,
+        "timestamp_ms": event.timestamp_ms,
+        "event_kind": format!("{:?}", event.kind),
+        "severity": format!("{:?}", event.severity),
+        "member_id": event.member_id,
+        "member_path": event.member_path,
+        "message": event.message,
+        "member": event.member.as_ref().map(member_json),
+        "error": event.error.as_ref().map(error_json),
+    })
+}
+
+fn response_meta_json(meta: &gws_core::ResponseMeta) -> serde_json::Value {
+    serde_json::json!({
+        "request_id": meta.request_id,
+        "schema_version": meta.schema_version,
+        "action": format!("{:?}", meta.action),
+        "aggregate_status": format!("{:?}", meta.aggregate_status),
+        "operation_id": meta.operation_id,
+        "message": meta.message,
+    })
+}
+
+fn member_json(member: &gws_core::MemberResponse) -> serde_json::Value {
+    serde_json::json!({
+        "member_id": member.member_id,
+        "member_path": member.member_path,
+        "source_kind": format!("{:?}", member.source_kind),
+        "status": format!("{:?}", member.status),
+        "error": member.error.as_ref().map(error_json),
+        "planned": member.planned.as_ref().map(planned_json),
+        "lock_match": member.lock_match.map(|lock_match| format!("{:?}", lock_match)),
+    })
+}
+
+fn planned_json(planned: &gws_core::PlannedChange) -> serde_json::Value {
+    serde_json::json!({
+        "action": format!("{:?}", planned.action),
+        "from_ref": planned.from_ref,
+        "to_ref": planned.to_ref,
+        "message": planned.message,
+    })
+}
+
+fn error_json(error: &gws_core::GwsError) -> serde_json::Value {
+    serde_json::json!({
+        "code": format!("{:?}", error.code),
+        "message": error.message,
+        "member_id": error.member_id,
+        "member_path": error.member_path,
+        "detail": error.detail,
+    })
 }
 
 #[derive(Clone, Debug, Default)]
@@ -710,6 +845,91 @@ mod tests {
         assert!(response.members.is_empty());
     }
 
+    #[test]
+    fn json_renderer_outputs_structured_response() {
+        let response = sample_response(gws_core::AggregateStatus::Ok, gws_core::MemberStatus::Ok);
+
+        let json: serde_json::Value =
+            serde_json::from_str(&render_response(&response, OutputMode::Json)).unwrap();
+
+        assert_eq!(json["kind"], "response");
+        assert_eq!(json["meta"]["aggregate_status"], "Ok");
+        assert_eq!(json["members"][0]["member_id"], "mem_app");
+        assert_eq!(json["members"][0]["status"], "Ok");
+    }
+
+    #[test]
+    fn jsonl_renderer_emits_response_event_and_result_in_order() {
+        let response = sample_response(
+            gws_core::AggregateStatus::Accepted,
+            gws_core::MemberStatus::Planned,
+        );
+        let event = sample_event();
+        let result = sample_result();
+
+        let lines = render_jsonl_stream(&response, &[event], Some(&result))
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0]["kind"], "response");
+        assert_eq!(lines[1]["kind"], "event");
+        assert_eq!(lines[2]["kind"], "result");
+    }
+
+    #[test]
+    fn human_renderer_smoke_covers_success_rejection_and_member_failure() {
+        let success = render_response(
+            &sample_response(gws_core::AggregateStatus::Ok, gws_core::MemberStatus::Ok),
+            OutputMode::Human,
+        );
+        assert!(success.contains("status: Ok"));
+
+        let rejected = render_response(
+            &sample_response(
+                gws_core::AggregateStatus::Rejected,
+                gws_core::MemberStatus::Rejected,
+            ),
+            OutputMode::Human,
+        );
+        assert!(rejected.contains("status: Rejected"));
+
+        let failed = render_response(
+            &sample_response(
+                gws_core::AggregateStatus::Failed,
+                gws_core::MemberStatus::Failed,
+            ),
+            OutputMode::Human,
+        );
+        assert!(failed.contains("RemoteRejected"));
+    }
+
+    #[test]
+    fn exit_code_mapping_distinguishes_success_rejected_and_failed() {
+        assert_eq!(
+            exit_code_for_response(&sample_response(
+                gws_core::AggregateStatus::Ok,
+                gws_core::MemberStatus::Ok,
+            )),
+            0
+        );
+        assert_eq!(
+            exit_code_for_response(&sample_response(
+                gws_core::AggregateStatus::Rejected,
+                gws_core::MemberStatus::Rejected,
+            )),
+            2
+        );
+        assert_eq!(
+            exit_code_for_response(&sample_response(
+                gws_core::AggregateStatus::Failed,
+                gws_core::MemberStatus::Failed,
+            )),
+            1
+        );
+    }
+
     fn parse(args: Vec<String>) -> CliInvocation {
         parse_result(args).unwrap()
     }
@@ -727,6 +947,75 @@ mod tests {
             request_id: request_id.to_owned(),
             schema_version: "gws.protocol/v0".to_owned(),
             ..Default::default()
+        }
+    }
+
+    fn sample_response(
+        aggregate_status: gws_core::AggregateStatus,
+        member_status: gws_core::MemberStatus,
+    ) -> gws_core::ResponseEnvelope {
+        let error = (member_status == gws_core::MemberStatus::Failed
+            || member_status == gws_core::MemberStatus::Rejected)
+            .then(|| gws_core::GwsError {
+                code: gws_core::GwsErrorCode::RemoteRejected,
+                message: "remote rejected".to_owned(),
+                member_id: Some("mem_app".to_owned()),
+                member_path: Some("repos/app".to_owned()),
+                detail: None,
+            });
+        gws_core::ResponseEnvelope {
+            meta: gws_core::ResponseMeta {
+                request_id: "req_render".to_owned(),
+                schema_version: "gws.protocol/v0".to_owned(),
+                action: gws_core::ActionKind::Status,
+                aggregate_status,
+                operation_id: Some("op_render".to_owned()),
+                message: None,
+                attribution: None,
+            },
+            members: vec![gws_core::MemberResponse {
+                member_id: "mem_app".to_owned(),
+                member_path: "repos/app".to_owned(),
+                source_kind: gws_core::SourceKind::Git,
+                status: member_status,
+                error,
+                planned: None,
+                state: None,
+                git_status: None,
+                lock_match: None,
+            }],
+            errors: Vec::new(),
+        }
+    }
+
+    fn sample_event() -> gws_core::OperationEvent {
+        gws_core::OperationEvent {
+            operation_id: "op_render".to_owned(),
+            request_id: "req_render".to_owned(),
+            sequence: 0,
+            timestamp_ms: 1,
+            kind: gws_core::EventKind::OperationStarted,
+            severity: gws_core::Severity::Info,
+            member_id: None,
+            member_path: None,
+            message: Some("started".to_owned()),
+            member: None,
+            error: None,
+            attribution: None,
+        }
+    }
+
+    fn sample_result() -> gws_core::OperationResult {
+        gws_core::OperationResult {
+            operation_id: "op_render".to_owned(),
+            request_id: "req_render".to_owned(),
+            action: gws_core::ActionKind::Status,
+            aggregate_status: gws_core::AggregateStatus::Ok,
+            started_at_ms: 1,
+            finished_at_ms: 2,
+            members: Vec::new(),
+            errors: Vec::new(),
+            attribution: None,
         }
     }
 
