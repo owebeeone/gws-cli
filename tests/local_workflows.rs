@@ -20,14 +20,20 @@ fn init_status_snapshot_tag_and_materialize_targets_work() {
     assert_eq!(json_lines(&init)[0]["meta"]["aggregate_status"], "Ok");
 
     let status_root = gws(temp.path())
-        .args(["--root", temp.path_str(), "--json", "status"])
+        .args([
+            "--root",
+            temp.path_str(),
+            "--json",
+            "status",
+            "--no-combined",
+        ])
         .output()
         .unwrap();
     assert_success(&status_root);
     assert_eq!(json(&status_root)["members"][0]["status"], "Ok");
 
     let status_member = gws(&temp.path().join("repos/remote"))
-        .args(["--json", "status"])
+        .args(["--json", "status", "--no-combined"])
         .output()
         .unwrap();
     assert_success(&status_member);
@@ -178,6 +184,25 @@ fn add_create_and_dry_run_commands_work() {
         .unwrap();
     assert_success(&dry_run);
     assert_eq!(json(&dry_run)["meta"]["aggregate_status"], "Accepted");
+}
+
+#[test]
+fn combined_status_is_explicitly_unsupported_until_backend_file_entries_exist() {
+    let temp = TempDir::new("combined-status");
+    assert_success(
+        &gws(temp.path())
+            .args(["--root", temp.path_str(), "init"])
+            .output()
+            .unwrap(),
+    );
+
+    let output = gws(temp.path())
+        .args(["--root", temp.path_str(), "status"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("UnsupportedOperation"));
 }
 
 #[test]

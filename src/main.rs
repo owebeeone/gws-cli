@@ -51,6 +51,7 @@ enum OutputMode {
     Human,
     Json,
     Jsonl,
+    Porcelain,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -167,6 +168,7 @@ fn render_response(response: &gws_core::ResponseEnvelope, output: OutputMode) ->
         OutputMode::Human => render_human_response(response),
         OutputMode::Json => response_json(response).to_string(),
         OutputMode::Jsonl => render_jsonl_stream(response, &[], None),
+        OutputMode::Porcelain => render_porcelain_response(response),
     }
 }
 
@@ -186,6 +188,16 @@ fn render_human_response(response: &gws_core::ResponseEnvelope) -> String {
         lines.push(format!("{:?}: {}", error.code, error.message));
     }
     lines.join("\n")
+}
+
+fn render_porcelain_response(response: &gws_core::ResponseEnvelope) -> String {
+    response
+        .members
+        .iter()
+        .filter(|member| member.status != gws_core::MemberStatus::Ok)
+        .map(|member| format!("!! {}", member.member_path))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn render_jsonl_stream(
@@ -308,6 +320,11 @@ struct ParsedArgs {
     jobs: Option<i64>,
     json: bool,
     jsonl: bool,
+    porcelain: bool,
+    combined_status: bool,
+    no_combined: bool,
+    no_files: bool,
+    no_branches: bool,
     target: Option<ParsedTarget>,
     positionals: Vec<String>,
 }
@@ -354,6 +371,11 @@ impl ParsedArgs {
                 }
                 "--json" => parsed.json = true,
                 "--jsonl" => parsed.jsonl = true,
+                "--porcelain" => parsed.porcelain = true,
+                "--combined" => parsed.combined_status = true,
+                "--no-combined" => parsed.no_combined = true,
+                "--no-files" => parsed.no_files = true,
+                "--no-branches" => parsed.no_branches = true,
                 "--lock" => parsed.set_target(ParsedTarget::Lock)?,
                 "--head" => parsed.set_target(ParsedTarget::Head)?,
                 "--snapshot" => {
@@ -387,9 +409,34 @@ impl ParsedArgs {
         if self.json && self.jsonl {
             return Err(CliError::new("--json and --jsonl are mutually exclusive"));
         }
+        if self.porcelain && (self.json || self.jsonl) {
+            return Err(CliError::new(
+                "--porcelain cannot be combined with --json or --jsonl",
+            ));
+        }
         if self.all && (!self.members.is_empty() || !self.paths.is_empty()) {
             return Err(CliError::new(
                 "--all cannot be combined with --member or --path",
+            ));
+        }
+        if self.no_files && self.no_branches {
+            return Err(CliError::new(
+                "--no-files and --no-branches cannot both be supplied",
+            ));
+        }
+        if self.combined_status && self.no_combined {
+            return Err(CliError::new(
+                "--combined and --no-combined cannot both be supplied",
+            ));
+        }
+        if self.porcelain && self.no_combined {
+            return Err(CliError::new(
+                "--porcelain cannot be combined with --no-combined",
+            ));
+        }
+        if self.no_combined && (self.no_files || self.no_branches) {
+            return Err(CliError::new(
+                "--no-files and --no-branches can only be used with combined status",
             ));
         }
         if self.jobs.is_some_and(|jobs| jobs < 1) {
@@ -399,7 +446,9 @@ impl ParsedArgs {
     }
 
     fn output_mode(&self) -> Result<OutputMode, CliError> {
-        if self.json {
+        if self.porcelain {
+            Ok(OutputMode::Porcelain)
+        } else if self.json {
             Ok(OutputMode::Json)
         } else if self.jsonl {
             Ok(OutputMode::Jsonl)
@@ -463,6 +512,11 @@ impl ParsedArgs {
         let Some(command) = self.positionals.first().map(String::as_str) else {
             return Err(CliError::new("missing command"));
         };
+        if command != "status" && self.has_status_specific_flags() {
+            return Err(CliError::new(
+                "status-specific flags can only be used with status",
+            ));
+        }
         match command {
             "init" => self.init_request(meta, workspace_root),
             "add" => self.add_request(meta),
@@ -478,11 +532,37 @@ impl ParsedArgs {
                     meta,
                 })
             }),
-            "status" => self
-                .no_arg_request("status")
-                .map(|_| CliRequest::Status(gws_core::StatusRequest { meta })),
+            "status" => self.status_request(meta),
             _ => Err(CliError::new(format!("unknown command {command}"))),
         }
+    }
+
+    fn has_status_specific_flags(&self) -> bool {
+        self.combined_status
+            || self.no_combined
+            || self.porcelain
+            || self.no_files
+            || self.no_branches
+    }
+
+    fn status_request(&self, meta: gws_core::RequestMeta) -> Result<CliRequest, CliError> {
+        self.no_arg_request("status")?;
+        let combined = !self.no_combined;
+        Ok(CliRequest::Status(gws_core::StatusRequest {
+            meta,
+            mode: Some(if combined {
+                gws_core::StatusMode::Combined
+            } else {
+                gws_core::StatusMode::Summary
+            }),
+            include_file_changes: if combined { Some(!self.no_files) } else { None },
+            include_branch_summary: if combined {
+                Some(!self.no_branches)
+            } else {
+                None
+            },
+            path_style: combined.then_some(gws_core::StatusPathStyle::WorkspaceRelative),
+        }))
     }
 
     fn init_request(
@@ -769,6 +849,63 @@ mod tests {
     }
 
     #[test]
+    fn parses_combined_status_flags() {
+        let invocation = parse_args_with_request_id(
+            strings(["status", "--porcelain", "--no-branches"]),
+            "req_test",
+            Path::new("/cwd"),
+        )
+        .unwrap();
+
+        assert_eq!(invocation.output, OutputMode::Porcelain);
+        let CliRequest::Status(request) = invocation.request else {
+            panic!("expected status");
+        };
+        assert_eq!(request.mode, Some(gws_core::StatusMode::Combined));
+        assert_eq!(request.include_file_changes, Some(true));
+        assert_eq!(request.include_branch_summary, Some(false));
+        assert_eq!(
+            request.path_style,
+            Some(gws_core::StatusPathStyle::WorkspaceRelative)
+        );
+    }
+
+    #[test]
+    fn parses_status_as_combined_by_default() {
+        let invocation =
+            parse_args_with_request_id(strings(["status"]), "req_test", Path::new("/cwd")).unwrap();
+
+        let CliRequest::Status(request) = invocation.request else {
+            panic!("expected status");
+        };
+        assert_eq!(request.mode, Some(gws_core::StatusMode::Combined));
+        assert_eq!(request.include_file_changes, Some(true));
+        assert_eq!(request.include_branch_summary, Some(true));
+        assert_eq!(
+            request.path_style,
+            Some(gws_core::StatusPathStyle::WorkspaceRelative)
+        );
+    }
+
+    #[test]
+    fn parses_no_combined_status_as_summary_mode() {
+        let invocation = parse_args_with_request_id(
+            strings(["status", "--no-combined"]),
+            "req_test",
+            Path::new("/cwd"),
+        )
+        .unwrap();
+
+        let CliRequest::Status(request) = invocation.request else {
+            panic!("expected status");
+        };
+        assert_eq!(request.mode, Some(gws_core::StatusMode::Summary));
+        assert_eq!(request.include_file_changes, None);
+        assert_eq!(request.include_branch_summary, None);
+        assert_eq!(request.path_style, None);
+    }
+
+    #[test]
     fn parses_command_matrix() {
         assert!(matches!(
             parse(strings(["add", "repos/app"])).request,
@@ -812,6 +949,12 @@ mod tests {
     fn rejects_invalid_command_combinations_before_core_execution() {
         assert!(parse_result(strings(["--json", "--jsonl", "status"])).is_err());
         assert!(parse_result(strings(["--all", "--member", "mem_app", "status"])).is_err());
+        assert!(parse_result(strings(["status", "--no-files", "--no-branches"])).is_err());
+        assert!(parse_result(strings(["status", "--combined", "--no-combined"])).is_err());
+        assert!(parse_result(strings(["status", "--porcelain", "--no-combined"])).is_err());
+        assert!(parse_result(strings(["status", "--no-combined", "--no-files"])).is_err());
+        assert!(parse_result(strings(["push", "--combined"])).is_err());
+        assert!(parse_result(strings(["push", "--no-combined"])).is_err());
         assert!(parse_result(strings(["materialize", "--snapshot"])).is_err());
         assert!(parse_result(strings(["pull", "--lock"])).is_err());
         assert!(parse_result(strings(["unknown"])).is_err());
@@ -830,7 +973,12 @@ mod tests {
         )
         .unwrap();
         let invocation = parse_args_with_request_id(
-            strings(["--root", temp.path().to_str().unwrap(), "status"]),
+            strings([
+                "--root",
+                temp.path().to_str().unwrap(),
+                "status",
+                "--no-combined",
+            ]),
             "req_status",
             temp.path(),
         )
