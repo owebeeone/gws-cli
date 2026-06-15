@@ -12,3 +12,6 @@ path = "src/main.rs"
 [dependencies]
 gws-core = { path = "../gws-core" }
 serde_json = "1"
+
+[dev-dependencies]
+git2 = "0.21"

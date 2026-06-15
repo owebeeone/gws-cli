@@ -66,6 +66,7 @@ dependencies = [
 name = "gws-cli"
 version = "0.1.0"
 dependencies = [
+ "git2",
  "gws-core",
  "serde_json",
 ]
