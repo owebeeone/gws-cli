@@ -72,6 +72,12 @@ cargo fmt --check
 cargo run -- --version
 ```
 
+## CLI Help And Docs
+
+CLI help is generated from the command parser. The `clap` command definitions
+SHOULD be the source of truth for terminal help and generated Markdown reference
+docs such as `docs/CLI.md`.
+
 ## License
 
 `gwz-cli` is licensed under GPL-2.0-only, the same license family used by Git.

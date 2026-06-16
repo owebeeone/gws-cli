@@ -15,8 +15,87 @@ fn help_flags_print_usage() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(stdout.contains("Usage: gwz"));
         assert!(stdout.contains("-h, --help"));
-        assert!(stdout.contains("gwz init"));
+        assert!(stdout.contains("init"));
         assert!(output.stderr.is_empty());
+    }
+}
+
+#[test]
+fn help_command_prints_detailed_subcommand_usage() {
+    let temp = TempDir::new("help-command");
+    let output = gwz(temp.path()).args(["help", "status"]).output().unwrap();
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage: gwz status"));
+    assert!(stdout.contains("--no-combined"));
+    assert!(stdout.contains("--porcelain"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn subcommand_help_prints_detailed_subcommand_usage() {
+    let temp = TempDir::new("subcommand-help");
+    let output = gwz(temp.path())
+        .args(["status", "--help"])
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage: gwz status"));
+    assert!(stdout.contains("--no-files"));
+    assert!(stdout.contains("--no-branches"));
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn init_help_explains_gwz_workspace_basics() {
+    let temp = TempDir::new("init-help");
+    let output = gwz(temp.path()).args(["help", "init"]).output().unwrap();
+
+    assert_success(&output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("A GWZ workspace is a local directory"));
+    assert!(stdout.contains("workspace/gwz.yml"));
+    assert!(stdout.contains("workspace/gwz.lock.yml"));
+    assert!(stdout.contains("Examples:"));
+    assert!(stdout.contains("gwz init git@github.com:org/app.git"));
+}
+
+#[test]
+fn every_command_help_has_semantics_and_examples() {
+    let temp = TempDir::new("all-help");
+    for command in [
+        &["init"][..],
+        &["add"][..],
+        &["repo"][..],
+        &["repo", "create"][..],
+        &["status"][..],
+        &["snapshot"][..],
+        &["tag"][..],
+        &["materialize"][..],
+        &["pull"][..],
+        &["push"][..],
+    ] {
+        let mut args = vec!["help"];
+        args.extend_from_slice(command);
+        let output = gwz(temp.path()).args(args).output().unwrap();
+
+        assert_success(&output);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("Examples:"),
+            "missing examples for {:?}:\n{}",
+            command,
+            stdout
+        );
+        assert!(
+            stdout.contains("workspace"),
+            "missing workspace semantics for {:?}:\n{}",
+            command,
+            stdout
+        );
     }
 }
 

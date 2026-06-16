@@ -1,16 +1,173 @@
+#[cfg(test)]
+use clap::CommandFactory;
+use clap::{Args, Parser, Subcommand, ValueEnum};
+
+const CLI_LONG: &str = "\
+GWZ manages a local workspace made from multiple git repositories.
+
+A workspace records its member repositories and exact revisions under the
+tracked `workspace/` directory. Commands operate on the workspace as a whole,
+so a single request can initialize, inspect, snapshot, materialize, pull, or
+push a coordinated set of repositories.";
+
+const CLI_AFTER: &str = "\
+Examples:
+  gwz init git@github.com:org/app.git git@github.com:org/lib.git
+  gwz status
+  gwz snapshot before-refactor
+  gwz pull --head";
+
+const INIT_LONG: &str = "\
+Create a workspace or initialize one from source URLs.
+
+A GWZ workspace is a local directory that owns a tracked `workspace/` metadata
+directory. `workspace/gwz.yml` describes the workspace and its repository
+members. `workspace/gwz.lock.yml` records the exact revisions that make the
+workspace reproducible.
+
+Running `gwz init` with no URLs creates an empty workspace at `--root` or the
+current directory. Passing one or more URLs creates the workspace and adds those
+repositories as initial members, materialized from their heads.";
+
+const INIT_AFTER: &str = "\
+Examples:
+  gwz init
+  gwz --root /work/demo init
+  gwz init git@github.com:org/app.git git@github.com:org/lib.git";
+
+const ADD_LONG: &str = "\
+Add an existing local git repository to the workspace.
+
+Use this when a repository already exists on disk and should become a workspace
+member. GWZ records the repository as a member; it does not clone a new copy.
+Use `gwz repo create` instead when the member should be created from scratch.";
+
+const ADD_AFTER: &str = "\
+Examples:
+  gwz add repos/app
+  gwz --root /work/demo add /src/local-lib";
+
+const REPO_LONG: &str = "\
+Manage repository members inside a workspace.
+
+Repository commands create or update the local member repositories that make up
+the workspace. For v0, this group exposes member creation; use top-level
+commands such as `gwz add`, `gwz status`, `gwz pull`, and `gwz push` for
+workspace-wide operations.";
+
+const REPO_AFTER: &str = "\
+Examples:
+  gwz repo create repos/new-service
+  gwz help repo create";
+
+const REPO_CREATE_LONG: &str = "\
+Create a new local repository member and register it with the workspace.
+
+The repository is created immediately at the requested member path and can be
+pushed to a remote later. This supports the GWZ workflow where a workspace can
+grow new repositories locally before deciding where they should be published.";
+
+const REPO_CREATE_AFTER: &str = "\
+Examples:
+  gwz repo create repos/new-service
+  gwz --root /work/demo repo create packages/experiment";
+
+const STATUS_LONG: &str = "\
+Show git status across workspace members.
+
+The default mode requests a combined workspace status: file paths are reported
+relative to the workspace and prefixed by member path when file entries are
+available. Use `--no-combined` for per-member summaries. Use `--porcelain` when
+another tool needs stable script-oriented output.";
+
+const STATUS_AFTER: &str = "\
+Examples:
+  gwz status
+  gwz status --no-combined
+  gwz status --porcelain
+  gwz --member mem_app status";
+
+const SNAPSHOT_LONG: &str = "\
+Record the current workspace selection as a named snapshot.
+
+A snapshot captures the current member revisions so the workspace can later be
+materialized back to the same coordinated state. Use snapshots before risky
+multi-repository changes, before sharing a reproducible work area, or before
+pulling all members forward.";
+
+const SNAPSHOT_AFTER: &str = "\
+Examples:
+  gwz snapshot before-refactor
+  gwz --all snapshot integration-baseline";
+
+const TAG_LONG: &str = "\
+Record a named GWZ workspace tag.
+
+A GWZ tag is workspace metadata, not a git tag inside each member repository.
+It stores the workspace-level mapping from member to revision, so the same tag
+name can be meaningful inside this workspace without colliding with tags in
+other workspaces or child repositories.";
+
+const TAG_AFTER: &str = "\
+Examples:
+  gwz tag release-2026-06
+  gwz materialize --tag release-2026-06";
+
+const MATERIALIZE_LONG: &str = "\
+Materialize workspace members to an explicit target.
+
+Materialization makes the local repositories match a workspace target. It is not
+raw `git pull`; GWZ plans the workspace operation first and applies the selected
+target across members. With no target flag, `gwz materialize` uses the workspace
+lock. Use `--head`, `--snapshot`, or `--tag` for a different target.";
+
+const MATERIALIZE_AFTER: &str = "\
+Examples:
+  gwz materialize
+  gwz materialize --lock
+  gwz materialize --snapshot before-refactor
+  gwz --force materialize --tag release-2026-06";
+
+const PULL_LONG: &str = "\
+Move workspace members forward to an explicit target.
+
+`gwz pull` is a workspace operation, not a direct wrapper around `git pull`.
+The default target is `--head`, and the default sync policy is fast-forward only.
+If any selected member cannot update cleanly, the operation is rejected before
+partial mutation unless `--partial` or another explicit policy changes that
+behavior.";
+
+const PULL_AFTER: &str = "\
+Examples:
+  gwz pull --head
+  gwz pull --snapshot integration-baseline
+  gwz --sync fetch-only pull --head
+  gwz --partial pull --head";
+
+const PUSH_LONG: &str = "\
+Push workspace member refs to their configured remotes.
+
+`gwz push` applies one push request across the selected workspace members. Use
+`--remote` to choose a remote name and selection flags such as `--member`,
+`--path`, or `--all` to control which members participate.";
+
+const PUSH_AFTER: &str = "\
+Examples:
+  gwz push
+  gwz push --remote origin
+  gwz --member mem_app push";
+
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let cli = Cli::parse();
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(error) => {
+            eprintln!("gwz: {error}");
+            std::process::exit(1);
+        }
+    };
 
-    if args.as_slice() == ["--version"] {
-        println!("gwz {}", gwz_core::version());
-        return;
-    }
-    if args.iter().any(|arg| arg == "-h" || arg == "--help") {
-        print!("{}", usage_text());
-        return;
-    }
-
-    match parse_args(args) {
+    match invocation_from_cli(cli, &new_request_id(), &cwd) {
         Ok(invocation) => match execute_invocation(&invocation) {
             Ok(response) => {
                 println!("{}", render_response(&response, invocation.output));
@@ -28,48 +185,323 @@ fn main() {
     }
 }
 
-fn usage_text() -> &'static str {
-    "\
-Usage: gwz [OPTIONS] <COMMAND>
+#[cfg(test)]
+fn usage_text() -> String {
+    Cli::command().render_help().to_string()
+}
 
-Commands:
-  gwz init
-  gwz init <url>...
-  gwz add <repo-path>
-  gwz repo create <member-path>
-  gwz status
-  gwz snapshot <name>
-  gwz tag <name>
-  gwz materialize --lock
-  gwz materialize --snapshot <name>
-  gwz materialize --tag <name>
-  gwz pull --head
-  gwz pull --snapshot <name>
-  gwz push
+#[derive(Clone, Debug, Parser)]
+#[command(
+    name = "gwz",
+    version,
+    about = "Manage GWZ multi-repository workspaces",
+    long_about = CLI_LONG,
+    after_long_help = CLI_AFTER,
+    arg_required_else_help = true,
+    subcommand_required = true
+)]
+struct Cli {
+    #[command(flatten, next_help_heading = "Global Options")]
+    global: GlobalArgs,
 
-Options:
-  --root <path>
-  --member <member-id>
-  --path <member-path>
-  --all
-  --dry-run
-  --partial
-  --force
-  --sync <fetch-only|ff-only|merge|rebase|reset|driver-selected>
-  --remote <name>
-  --jobs <n>
-  --json
-  --jsonl
-  -h, --help
-  --version
+    #[command(subcommand)]
+    command: CommandArgs,
+}
 
-Status options:
-  --combined
-  --no-combined
-  --porcelain
-  --no-files
-  --no-branches
-"
+#[derive(Clone, Debug, Default, Args)]
+struct GlobalArgs {
+    #[arg(
+        long,
+        global = true,
+        value_name = "path",
+        help = "Workspace root",
+        long_help = "Workspace root. Defaults to the current directory when not supplied."
+    )]
+    root: Option<String>,
+
+    #[arg(
+        long = "member",
+        global = true,
+        value_name = "member-id",
+        help = "Select a workspace member by id",
+        long_help = "Select a workspace member by id. May be supplied more than once."
+    )]
+    members: Vec<String>,
+
+    #[arg(
+        long = "path",
+        global = true,
+        value_name = "member-path",
+        help = "Select a workspace member by path",
+        long_help = "Select a workspace member by path. May be supplied more than once."
+    )]
+    paths: Vec<String>,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Select all workspace members",
+        long_help = "Select all workspace members. Cannot be combined with `--member` or `--path`."
+    )]
+    all: bool,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Plan the operation without mutating state",
+        long_help = "Plan the operation without mutating workspace metadata or member repositories."
+    )]
+    dry_run: bool,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Allow operations to complete partially",
+        long_help = "Allow operations to complete for members that can proceed even when another selected member fails."
+    )]
+    partial: bool,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Allow destructive behavior when required",
+        long_help = "Allow destructive behavior when required. GWZ refuses destructive changes unless this is explicit."
+    )]
+    force: bool,
+
+    #[arg(
+        long,
+        global = true,
+        value_enum,
+        value_name = "mode",
+        help = "Select workspace sync behavior",
+        long_help = "Select workspace sync behavior. The default policy is fast-forward only."
+    )]
+    sync: Option<SyncArg>,
+
+    #[arg(
+        long,
+        global = true,
+        value_name = "name",
+        help = "Select the git remote name",
+        long_help = "Select the git remote name used by operations that contact remotes."
+    )]
+    remote: Option<String>,
+
+    #[arg(
+        long,
+        global = true,
+        value_name = "n",
+        value_parser = parse_positive_i64,
+        help = "Maximum number of repos to process concurrently",
+        long_help = "Maximum number of workspace member repositories to process concurrently."
+    )]
+    jobs: Option<i64>,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Render one JSON response",
+        long_help = "Render one structured JSON response for the operation."
+    )]
+    json: bool,
+
+    #[arg(
+        long,
+        global = true,
+        help = "Render newline-delimited JSON events",
+        long_help = "Render newline-delimited JSON records for streaming operation consumers."
+    )]
+    jsonl: bool,
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum CommandArgs {
+    #[command(
+        about = "Create a workspace or initialize one from source URLs",
+        long_about = INIT_LONG,
+        after_long_help = INIT_AFTER
+    )]
+    Init(InitArgs),
+    #[command(
+        about = "Add an existing git repository to the workspace",
+        long_about = ADD_LONG,
+        after_long_help = ADD_AFTER
+    )]
+    Add(AddArgs),
+    #[command(
+        about = "Manage workspace repositories",
+        long_about = REPO_LONG,
+        after_long_help = REPO_AFTER
+    )]
+    Repo(RepoArgs),
+    #[command(
+        about = "Show workspace git status",
+        long_about = STATUS_LONG,
+        after_long_help = STATUS_AFTER
+    )]
+    Status(StatusArgs),
+    #[command(
+        about = "Record the current workspace selection",
+        long_about = SNAPSHOT_LONG,
+        after_long_help = SNAPSHOT_AFTER
+    )]
+    Snapshot(NameArgs),
+    #[command(
+        about = "Record a named workspace tag",
+        long_about = TAG_LONG,
+        after_long_help = TAG_AFTER
+    )]
+    Tag(NameArgs),
+    #[command(
+        about = "Materialize workspace members to a target",
+        long_about = MATERIALIZE_LONG,
+        after_long_help = MATERIALIZE_AFTER
+    )]
+    Materialize(MaterializeArgs),
+    #[command(
+        about = "Update workspace members to an explicit target",
+        long_about = PULL_LONG,
+        after_long_help = PULL_AFTER
+    )]
+    Pull(PullArgs),
+    #[command(
+        about = "Push workspace member refs",
+        long_about = PUSH_LONG,
+        after_long_help = PUSH_AFTER
+    )]
+    Push,
+}
+
+#[derive(Clone, Debug, Args)]
+struct InitArgs {
+    #[arg(
+        value_name = "url",
+        help = "Git source URL to add as an initial workspace member",
+        long_help = "Git source URL to add as an initial workspace member. May be supplied more than once."
+    )]
+    urls: Vec<String>,
+}
+
+#[derive(Clone, Debug, Args)]
+struct AddArgs {
+    #[arg(
+        value_name = "repo-path",
+        help = "Path to an existing local git repository"
+    )]
+    repo_path: String,
+}
+
+#[derive(Clone, Debug, Args)]
+struct RepoArgs {
+    #[command(subcommand)]
+    command: RepoCommandArgs,
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum RepoCommandArgs {
+    #[command(
+        about = "Create a new repository member",
+        long_about = REPO_CREATE_LONG,
+        after_long_help = REPO_CREATE_AFTER
+    )]
+    Create(RepoCreateArgs),
+}
+
+#[derive(Clone, Debug, Args)]
+struct RepoCreateArgs {
+    #[arg(
+        value_name = "member-path",
+        help = "Workspace-relative path for the new repository member"
+    )]
+    member_path: String,
+}
+
+#[derive(Clone, Debug, Args)]
+struct StatusArgs {
+    #[arg(
+        long,
+        help = "Render combined workspace status",
+        long_help = "Render combined workspace status. This is the default mode."
+    )]
+    combined: bool,
+
+    #[arg(
+        long = "no-combined",
+        help = "Render per-member status summaries",
+        long_help = "Render per-member status summaries instead of one combined workspace view."
+    )]
+    no_combined: bool,
+
+    #[arg(
+        long,
+        help = "Render porcelain output",
+        long_help = "Render stable script-oriented output instead of human-readable text."
+    )]
+    porcelain: bool,
+
+    #[arg(
+        long = "no-files",
+        help = "Omit file changes from combined status",
+        long_help = "Omit file changes from combined status while keeping branch summaries."
+    )]
+    no_files: bool,
+
+    #[arg(
+        long = "no-branches",
+        help = "Omit branch summaries from combined status",
+        long_help = "Omit branch summaries from combined status while keeping file changes."
+    )]
+    no_branches: bool,
+}
+
+#[derive(Clone, Debug, Args)]
+struct NameArgs {
+    #[arg(value_name = "name", help = "Workspace-level name to record")]
+    name: String,
+}
+
+#[derive(Clone, Debug, Default, Args)]
+struct MaterializeArgs {
+    #[arg(
+        long,
+        help = "Materialize the workspace lock",
+        long_help = "Materialize the workspace lock. This is the default target."
+    )]
+    lock: bool,
+
+    #[arg(long, help = "Materialize repository heads")]
+    head: bool,
+
+    #[arg(long, value_name = "name", help = "Materialize a workspace snapshot")]
+    snapshot: Option<String>,
+
+    #[arg(long, value_name = "name", help = "Materialize a workspace tag")]
+    tag: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Args)]
+struct PullArgs {
+    #[arg(
+        long,
+        help = "Pull repository heads",
+        long_help = "Pull repository heads. This is the default target."
+    )]
+    head: bool,
+
+    #[arg(long, value_name = "name", help = "Pull a workspace snapshot")]
+    snapshot: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum SyncArg {
+    FetchOnly,
+    FfOnly,
+    Merge,
+    Rebase,
+    Reset,
+    DriverSelected,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -115,24 +547,31 @@ impl CliError {
     }
 }
 
-fn parse_args(args: Vec<String>) -> Result<CliInvocation, CliError> {
-    let cwd = std::env::current_dir().map_err(|error| CliError::new(error.to_string()))?;
-    parse_args_with_request_id(args, &new_request_id(), &cwd)
-}
-
+#[cfg(test)]
 fn parse_args_with_request_id(
     args: Vec<String>,
     request_id: &str,
     current_dir: &std::path::Path,
 ) -> Result<CliInvocation, CliError> {
-    let parsed = ParsedArgs::parse(args)?;
-    let output = parsed.output_mode()?;
-    let meta = parsed.request_meta(request_id);
-    let workspace_root = parsed
+    let cli = Cli::try_parse_from(std::iter::once("gwz".to_owned()).chain(args))
+        .map_err(|error| CliError::new(error.to_string()))?;
+    invocation_from_cli(cli, request_id, current_dir)
+}
+
+fn invocation_from_cli(
+    cli: Cli,
+    request_id: &str,
+    current_dir: &std::path::Path,
+) -> Result<CliInvocation, CliError> {
+    cli.validate()?;
+    let output = cli.output_mode();
+    let meta = cli.request_meta(request_id);
+    let workspace_root = cli
+        .global
         .root
         .clone()
         .unwrap_or_else(|| current_dir.to_string_lossy().into_owned());
-    let request = parsed.command_request(meta, workspace_root)?;
+    let request = cli.command_request(meta, workspace_root)?;
     Ok(CliInvocation {
         request,
         output,
@@ -354,154 +793,31 @@ fn error_json(error: &gwz_core::GwzError) -> serde_json::Value {
     })
 }
 
-#[derive(Clone, Debug, Default)]
-struct ParsedArgs {
-    root: Option<String>,
-    members: Vec<String>,
-    paths: Vec<String>,
-    all: bool,
-    dry_run: bool,
-    partial: bool,
-    force: bool,
-    sync: Option<gwz_core::SyncBehavior>,
-    remote: Option<String>,
-    jobs: Option<i64>,
-    json: bool,
-    jsonl: bool,
-    porcelain: bool,
-    combined_status: bool,
-    no_combined: bool,
-    no_files: bool,
-    no_branches: bool,
-    target: Option<ParsedTarget>,
-    positionals: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum ParsedTarget {
-    Lock,
-    Head,
-    Snapshot(String),
-    Tag(String),
-}
-
-impl ParsedArgs {
-    fn parse(args: Vec<String>) -> Result<Self, CliError> {
-        let mut parsed = Self::default();
-        let mut index = 0;
-        while index < args.len() {
-            let arg = &args[index];
-            match arg.as_str() {
-                "--root" => {
-                    parsed.root = Some(take_value(&args, &mut index, "--root")?);
-                }
-                "--member" => parsed
-                    .members
-                    .push(take_value(&args, &mut index, "--member")?),
-                "--path" => parsed.paths.push(take_value(&args, &mut index, "--path")?),
-                "--all" => parsed.all = true,
-                "--dry-run" => parsed.dry_run = true,
-                "--partial" => parsed.partial = true,
-                "--force" => parsed.force = true,
-                "--sync" => {
-                    parsed.sync = Some(parse_sync(&take_value(&args, &mut index, "--sync")?)?);
-                }
-                "--remote" => {
-                    parsed.remote = Some(take_value(&args, &mut index, "--remote")?);
-                }
-                "--jobs" => {
-                    let value = take_value(&args, &mut index, "--jobs")?;
-                    parsed.jobs = Some(
-                        value
-                            .parse::<i64>()
-                            .map_err(|_| CliError::new("--jobs requires an integer"))?,
-                    );
-                }
-                "--json" => parsed.json = true,
-                "--jsonl" => parsed.jsonl = true,
-                "--porcelain" => parsed.porcelain = true,
-                "--combined" => parsed.combined_status = true,
-                "--no-combined" => parsed.no_combined = true,
-                "--no-files" => parsed.no_files = true,
-                "--no-branches" => parsed.no_branches = true,
-                "--lock" => parsed.set_target(ParsedTarget::Lock)?,
-                "--head" => parsed.set_target(ParsedTarget::Head)?,
-                "--snapshot" => {
-                    let name = take_value(&args, &mut index, "--snapshot")?;
-                    parsed.set_target(ParsedTarget::Snapshot(name))?;
-                }
-                "--tag" => {
-                    let name = take_value(&args, &mut index, "--tag")?;
-                    parsed.set_target(ParsedTarget::Tag(name))?;
-                }
-                value if value.starts_with("--") => {
-                    return Err(CliError::new(format!("unknown flag {value}")));
-                }
-                value => parsed.positionals.push(value.to_owned()),
-            }
-            index += 1;
-        }
-        parsed.validate()?;
-        Ok(parsed)
-    }
-
-    fn set_target(&mut self, target: ParsedTarget) -> Result<(), CliError> {
-        if self.target.is_some() {
-            return Err(CliError::new("only one target flag may be supplied"));
-        }
-        self.target = Some(target);
-        Ok(())
-    }
-
+impl Cli {
     fn validate(&self) -> Result<(), CliError> {
-        if self.json && self.jsonl {
+        if self.global.json && self.global.jsonl {
             return Err(CliError::new("--json and --jsonl are mutually exclusive"));
         }
-        if self.porcelain && (self.json || self.jsonl) {
-            return Err(CliError::new(
-                "--porcelain cannot be combined with --json or --jsonl",
-            ));
-        }
-        if self.all && (!self.members.is_empty() || !self.paths.is_empty()) {
+        if self.global.all && (!self.global.members.is_empty() || !self.global.paths.is_empty()) {
             return Err(CliError::new(
                 "--all cannot be combined with --member or --path",
             ));
         }
-        if self.no_files && self.no_branches {
-            return Err(CliError::new(
-                "--no-files and --no-branches cannot both be supplied",
-            ));
-        }
-        if self.combined_status && self.no_combined {
-            return Err(CliError::new(
-                "--combined and --no-combined cannot both be supplied",
-            ));
-        }
-        if self.porcelain && self.no_combined {
-            return Err(CliError::new(
-                "--porcelain cannot be combined with --no-combined",
-            ));
-        }
-        if self.no_combined && (self.no_files || self.no_branches) {
-            return Err(CliError::new(
-                "--no-files and --no-branches can only be used with combined status",
-            ));
-        }
-        if self.jobs.is_some_and(|jobs| jobs < 1) {
-            return Err(CliError::new("--jobs must be greater than zero"));
+        if let CommandArgs::Status(status) = &self.command {
+            status.validate(&self.global)?;
         }
         Ok(())
     }
 
-    fn output_mode(&self) -> Result<OutputMode, CliError> {
-        if self.porcelain {
-            Ok(OutputMode::Porcelain)
-        } else if self.json {
-            Ok(OutputMode::Json)
-        } else if self.jsonl {
-            Ok(OutputMode::Jsonl)
+    fn output_mode(&self) -> OutputMode {
+        if matches!(&self.command, CommandArgs::Status(status) if status.porcelain) {
+            OutputMode::Porcelain
+        } else if self.global.json {
+            OutputMode::Json
+        } else if self.global.jsonl {
+            OutputMode::Jsonl
         } else {
-            Ok(OutputMode::Human)
+            OutputMode::Human
         }
     }
 
@@ -509,23 +825,27 @@ impl ParsedArgs {
         gwz_core::RequestMeta {
             request_id: request_id.to_owned(),
             schema_version: "gwz.protocol/v0".to_owned(),
-            workspace: self.root.as_ref().map(|root| gwz_core::WorkspaceRef {
-                root: Some(root.clone()),
-                workspace_id: None,
-            }),
+            workspace: self
+                .global
+                .root
+                .as_ref()
+                .map(|root| gwz_core::WorkspaceRef {
+                    root: Some(root.clone()),
+                    workspace_id: None,
+                }),
             selection: self.selection(),
             policy: self.policy(),
-            dry_run: self.dry_run.then_some(true),
+            dry_run: self.global.dry_run.then_some(true),
             ..Default::default()
         }
     }
 
     fn selection(&self) -> Option<gwz_core::Selection> {
-        if self.all || !self.members.is_empty() || !self.paths.is_empty() {
+        if self.global.all || !self.global.members.is_empty() || !self.global.paths.is_empty() {
             Some(gwz_core::Selection {
-                all: self.all.then_some(true),
-                member_ids: self.members.clone(),
-                paths: self.paths.clone(),
+                all: self.global.all.then_some(true),
+                member_ids: self.global.members.clone(),
+                paths: self.global.paths.clone(),
             })
         } else {
             None
@@ -533,18 +853,24 @@ impl ParsedArgs {
     }
 
     fn policy(&self) -> Option<gwz_core::OperationPolicy> {
-        if self.partial
-            || self.force
-            || self.sync.is_some()
-            || self.remote.is_some()
-            || self.jobs.is_some()
+        if self.global.partial
+            || self.global.force
+            || self.global.sync.is_some()
+            || self.global.remote.is_some()
+            || self.global.jobs.is_some()
         {
             Some(gwz_core::OperationPolicy {
-                partial: self.partial.then_some(gwz_core::PartialBehavior::Partial),
-                destructive: self.force.then_some(gwz_core::DestructiveBehavior::Allow),
-                sync: self.sync,
-                remote: self.remote.clone(),
-                concurrency: self.jobs,
+                partial: self
+                    .global
+                    .partial
+                    .then_some(gwz_core::PartialBehavior::Partial),
+                destructive: self
+                    .global
+                    .force
+                    .then_some(gwz_core::DestructiveBehavior::Allow),
+                sync: self.global.sync.map(Into::into),
+                remote: self.global.remote.clone(),
+                concurrency: self.global.jobs,
                 ..Default::default()
             })
         } else {
@@ -557,69 +883,37 @@ impl ParsedArgs {
         meta: gwz_core::RequestMeta,
         workspace_root: String,
     ) -> Result<CliRequest, CliError> {
-        let Some(command) = self.positionals.first().map(String::as_str) else {
-            return Err(CliError::new("missing command"));
-        };
-        if command != "status" && self.has_status_specific_flags() {
-            return Err(CliError::new(
-                "status-specific flags can only be used with status",
-            ));
-        }
-        match command {
-            "init" => self.init_request(meta, workspace_root),
-            "add" => self.add_request(meta),
-            "repo" => self.repo_request(meta),
-            "materialize" => self.materialize_request(meta),
-            "pull" => self.pull_request(meta),
-            "snapshot" => self.snapshot_request(meta),
-            "tag" => self.tag_request(meta),
-            "push" => self.no_arg_request("push").map(|_| {
-                CliRequest::Push(gwz_core::PushRequest {
-                    remote: self.remote.clone(),
-                    refspec: None,
-                    meta,
-                })
-            }),
-            "status" => self.status_request(meta),
-            _ => Err(CliError::new(format!("unknown command {command}"))),
+        match &self.command {
+            CommandArgs::Init(args) => args.request(meta, workspace_root),
+            CommandArgs::Add(args) => args.request(meta),
+            CommandArgs::Repo(args) => args.request(meta),
+            CommandArgs::Status(args) => args.request(meta),
+            CommandArgs::Snapshot(args) => Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest {
+                meta,
+                snapshot_id: args.name.clone(),
+            })),
+            CommandArgs::Tag(args) => Ok(CliRequest::Tag(gwz_core::TagRequest {
+                meta,
+                tag_name: args.name.clone(),
+            })),
+            CommandArgs::Materialize(args) => args.request(meta),
+            CommandArgs::Pull(args) => args.request(meta),
+            CommandArgs::Push => Ok(CliRequest::Push(gwz_core::PushRequest {
+                remote: self.global.remote.clone(),
+                refspec: None,
+                meta,
+            })),
         }
     }
+}
 
-    fn has_status_specific_flags(&self) -> bool {
-        self.combined_status
-            || self.no_combined
-            || self.porcelain
-            || self.no_files
-            || self.no_branches
-    }
-
-    fn status_request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
-        self.no_arg_request("status")?;
-        let combined = !self.no_combined;
-        Ok(CliRequest::Status(gwz_core::StatusRequest {
-            meta,
-            mode: Some(if combined {
-                gwz_core::StatusMode::Combined
-            } else {
-                gwz_core::StatusMode::Summary
-            }),
-            include_file_changes: if combined { Some(!self.no_files) } else { None },
-            include_branch_summary: if combined {
-                Some(!self.no_branches)
-            } else {
-                None
-            },
-            path_style: combined.then_some(gwz_core::StatusPathStyle::WorkspaceRelative),
-        }))
-    }
-
-    fn init_request(
+impl InitArgs {
+    fn request(
         &self,
         meta: gwz_core::RequestMeta,
         workspace_root: String,
     ) -> Result<CliRequest, CliError> {
-        let urls = self.positionals.iter().skip(1).cloned().collect::<Vec<_>>();
-        if urls.is_empty() {
+        if self.urls.is_empty() {
             Ok(CliRequest::CreateWorkspace(
                 gwz_core::CreateWorkspaceRequest {
                     meta,
@@ -632,8 +926,10 @@ impl ParsedArgs {
                 gwz_core::InitFromSourcesRequest {
                     meta,
                     workspace_root,
-                    sources: urls
-                        .into_iter()
+                    sources: self
+                        .urls
+                        .iter()
+                        .cloned()
                         .map(|url| gwz_core::SourceUrl {
                             url,
                             path: None,
@@ -651,138 +947,166 @@ impl ParsedArgs {
             ))
         }
     }
+}
 
-    fn add_request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
-        self.require_arg_count("add", 1)?;
+impl AddArgs {
+    fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
         Ok(CliRequest::AddExistingRepo(
             gwz_core::AddExistingRepoRequest {
                 meta,
-                repository_path: self.positionals[1].clone(),
+                repository_path: self.repo_path.clone(),
                 member_path: None,
                 member_id: None,
                 source_id: None,
             },
         ))
     }
+}
 
-    fn repo_request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
-        if self.positionals.get(1).map(String::as_str) != Some("create") {
-            return Err(CliError::new("expected 'repo create <member-path>'"));
-        }
-        if self.positionals.len() != 3 {
-            return Err(CliError::new("repo create requires a member path"));
-        }
-        Ok(CliRequest::CreateRepo(gwz_core::CreateRepoRequest {
-            meta,
-            member_path: self.positionals[2].clone(),
-            initial_branch: None,
-            member_id: None,
-            source_id: None,
-        }))
-    }
-
-    fn materialize_request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
-        self.no_arg_request("materialize")?;
-        Ok(CliRequest::Materialize(gwz_core::MaterializeRequest {
-            meta,
-            target: self.materialize_target()?,
-        }))
-    }
-
-    fn pull_request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
-        self.no_arg_request("pull")?;
-        match self.target.as_ref().unwrap_or(&ParsedTarget::Head) {
-            ParsedTarget::Head => Ok(CliRequest::PullHead(gwz_core::PullHeadRequest { meta })),
-            ParsedTarget::Snapshot(name) => {
-                Ok(CliRequest::PullSnapshot(gwz_core::PullSnapshotRequest {
+impl RepoArgs {
+    fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        match &self.command {
+            RepoCommandArgs::Create(args) => {
+                Ok(CliRequest::CreateRepo(gwz_core::CreateRepoRequest {
                     meta,
-                    snapshot_id: name.clone(),
+                    member_path: args.member_path.clone(),
+                    initial_branch: None,
+                    member_id: None,
+                    source_id: None,
                 }))
             }
-            ParsedTarget::Lock | ParsedTarget::Tag(_) => {
-                Err(CliError::new("pull supports --head or --snapshot <name>"))
-            }
         }
     }
+}
 
-    fn snapshot_request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
-        self.require_arg_count("snapshot", 1)?;
-        Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest {
-            meta,
-            snapshot_id: self.positionals[1].clone(),
-        }))
+impl StatusArgs {
+    fn validate(&self, global: &GlobalArgs) -> Result<(), CliError> {
+        if self.porcelain && (global.json || global.jsonl) {
+            return Err(CliError::new(
+                "--porcelain cannot be combined with --json or --jsonl",
+            ));
+        }
+        if self.no_files && self.no_branches {
+            return Err(CliError::new(
+                "--no-files and --no-branches cannot both be supplied",
+            ));
+        }
+        if self.combined && self.no_combined {
+            return Err(CliError::new(
+                "--combined and --no-combined cannot both be supplied",
+            ));
+        }
+        if self.porcelain && self.no_combined {
+            return Err(CliError::new(
+                "--porcelain cannot be combined with --no-combined",
+            ));
+        }
+        if self.no_combined && (self.no_files || self.no_branches) {
+            return Err(CliError::new(
+                "--no-files and --no-branches can only be used with combined status",
+            ));
+        }
+        Ok(())
     }
 
-    fn tag_request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
-        self.require_arg_count("tag", 1)?;
-        Ok(CliRequest::Tag(gwz_core::TagRequest {
+    fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        let combined = !self.no_combined;
+        Ok(CliRequest::Status(gwz_core::StatusRequest {
             meta,
-            tag_name: self.positionals[1].clone(),
-        }))
-    }
-
-    fn materialize_target(&self) -> Result<gwz_core::MaterializeTarget, CliError> {
-        let target = self.target.as_ref().unwrap_or(&ParsedTarget::Lock);
-        match target {
-            ParsedTarget::Lock => Ok(gwz_core::MaterializeTarget {
-                kind: gwz_core::MaterializeTargetKind::Lock,
-                name: None,
-                commit: None,
+            mode: Some(if combined {
+                gwz_core::StatusMode::Combined
+            } else {
+                gwz_core::StatusMode::Summary
             }),
-            ParsedTarget::Head => Ok(gwz_core::MaterializeTarget {
+            include_file_changes: if combined { Some(!self.no_files) } else { None },
+            include_branch_summary: if combined {
+                Some(!self.no_branches)
+            } else {
+                None
+            },
+            path_style: combined.then_some(gwz_core::StatusPathStyle::WorkspaceRelative),
+        }))
+    }
+}
+
+impl MaterializeArgs {
+    fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        Ok(CliRequest::Materialize(gwz_core::MaterializeRequest {
+            meta,
+            target: self.target()?,
+        }))
+    }
+
+    fn target(&self) -> Result<gwz_core::MaterializeTarget, CliError> {
+        let targets = usize::from(self.lock)
+            + usize::from(self.head)
+            + usize::from(self.snapshot.is_some())
+            + usize::from(self.tag.is_some());
+        if targets > 1 {
+            return Err(CliError::new("only one target flag may be supplied"));
+        }
+        if self.head {
+            Ok(gwz_core::MaterializeTarget {
                 kind: gwz_core::MaterializeTargetKind::Head,
                 name: None,
                 commit: None,
-            }),
-            ParsedTarget::Snapshot(name) => Ok(gwz_core::MaterializeTarget {
+            })
+        } else if let Some(name) = &self.snapshot {
+            Ok(gwz_core::MaterializeTarget {
                 kind: gwz_core::MaterializeTargetKind::Snapshot,
                 name: Some(name.clone()),
                 commit: None,
-            }),
-            ParsedTarget::Tag(name) => Ok(gwz_core::MaterializeTarget {
+            })
+        } else if let Some(name) = &self.tag {
+            Ok(gwz_core::MaterializeTarget {
                 kind: gwz_core::MaterializeTargetKind::Tag,
                 name: Some(name.clone()),
                 commit: None,
-            }),
-        }
-    }
-
-    fn no_arg_request(&self, command: &str) -> Result<(), CliError> {
-        self.require_arg_count(command, 0)
-    }
-
-    fn require_arg_count(&self, command: &str, count: usize) -> Result<(), CliError> {
-        if self.positionals.len() == count + 1 {
-            Ok(())
+            })
         } else {
-            Err(CliError::new(format!(
-                "{command} expects {count} argument(s)"
-            )))
+            Ok(gwz_core::MaterializeTarget {
+                kind: gwz_core::MaterializeTargetKind::Lock,
+                name: None,
+                commit: None,
+            })
         }
     }
 }
 
-fn take_value(args: &[String], index: &mut usize, flag: &str) -> Result<String, CliError> {
-    *index += 1;
-    let value = args
-        .get(*index)
-        .ok_or_else(|| CliError::new(format!("{flag} requires a value")))?;
-    if value.starts_with("--") {
-        return Err(CliError::new(format!("{flag} requires a value")));
+impl PullArgs {
+    fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        match (self.head, self.snapshot.as_ref()) {
+            (true, Some(_)) => Err(CliError::new("only one target flag may be supplied")),
+            (_, Some(name)) => Ok(CliRequest::PullSnapshot(gwz_core::PullSnapshotRequest {
+                meta,
+                snapshot_id: name.clone(),
+            })),
+            _ => Ok(CliRequest::PullHead(gwz_core::PullHeadRequest { meta })),
+        }
     }
-    Ok(value.clone())
 }
 
-fn parse_sync(value: &str) -> Result<gwz_core::SyncBehavior, CliError> {
-    match value {
-        "fetch-only" => Ok(gwz_core::SyncBehavior::FetchOnly),
-        "ff-only" => Ok(gwz_core::SyncBehavior::FfOnly),
-        "merge" => Ok(gwz_core::SyncBehavior::Merge),
-        "rebase" => Ok(gwz_core::SyncBehavior::Rebase),
-        "reset" => Ok(gwz_core::SyncBehavior::Reset),
-        "driver-selected" => Ok(gwz_core::SyncBehavior::DriverSelected),
-        _ => Err(CliError::new("unknown --sync value")),
+impl From<SyncArg> for gwz_core::SyncBehavior {
+    fn from(value: SyncArg) -> Self {
+        match value {
+            SyncArg::FetchOnly => gwz_core::SyncBehavior::FetchOnly,
+            SyncArg::FfOnly => gwz_core::SyncBehavior::FfOnly,
+            SyncArg::Merge => gwz_core::SyncBehavior::Merge,
+            SyncArg::Rebase => gwz_core::SyncBehavior::Rebase,
+            SyncArg::Reset => gwz_core::SyncBehavior::Reset,
+            SyncArg::DriverSelected => gwz_core::SyncBehavior::DriverSelected,
+        }
     }
+}
+
+fn parse_positive_i64(value: &str) -> Result<i64, String> {
+    let parsed = value
+        .parse::<i64>()
+        .map_err(|_| "--jobs requires an integer".to_owned())?;
+    if parsed < 1 {
+        return Err("--jobs must be greater than zero".to_owned());
+    }
+    Ok(parsed)
 }
 
 fn new_request_id() -> String {
@@ -815,8 +1139,8 @@ mod tests {
 
         assert!(usage.contains("Usage: gwz"));
         assert!(usage.contains("-h, --help"));
-        assert!(usage.contains("gwz init <url>..."));
-        assert!(usage.contains("gwz status"));
+        assert!(usage.contains("init"));
+        assert!(usage.contains("status"));
     }
 
     #[test]
