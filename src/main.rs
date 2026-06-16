@@ -991,11 +991,12 @@ fn execute_invocation(invocation: &CliInvocation) -> Result<CliResponse, CliErro
             gwz_core::workspace_ops::handle_tag(start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
         }
-        CliRequest::PullHead(request) => gwz_core::workspace_ops::handle_pull_head(
+        CliRequest::PullHead(request) => gwz_core::workspace_ops::handle_pull_head_with_events(
             &backend,
             start,
             request.clone(),
             operation_id,
+            events,
         )
         .map(|response| CliResponse::envelope(response.response)),
         CliRequest::PullSnapshot(request) => gwz_core::workspace_ops::handle_pull_snapshot(
@@ -1006,10 +1007,14 @@ fn execute_invocation(invocation: &CliInvocation) -> Result<CliResponse, CliErro
             events,
         )
         .map(|response| CliResponse::envelope(response.response)),
-        CliRequest::Push(request) => {
-            gwz_core::workspace_ops::handle_push(&backend, start, request.clone(), operation_id)
-                .map(|response| CliResponse::envelope(response.response))
-        }
+        CliRequest::Push(request) => gwz_core::workspace_ops::handle_push_with_events(
+            &backend,
+            start,
+            request.clone(),
+            operation_id,
+            events,
+        )
+        .map(|response| CliResponse::envelope(response.response)),
     };
     response.map_err(|error| CliError::new(error.to_string()))
 }
@@ -1039,6 +1044,13 @@ fn render_human_response(response: &CliResponse) -> String {
         );
         if let Some(error) = &member.error {
             line.push_str(&format!(" {:?}: {}", error.code, error.message));
+        }
+        if let Some(message) = member
+            .planned
+            .as_ref()
+            .and_then(|planned| planned.message.as_ref())
+        {
+            line.push_str(&format!(" {message}"));
         }
         lines.push(line);
     }

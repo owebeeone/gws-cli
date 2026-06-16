@@ -312,6 +312,129 @@ fn pull_head_and_push_work_with_local_remote() {
 }
 
 #[test]
+fn pull_head_skips_member_without_fetch_remote_and_streams_events() {
+    let temp = TempDir::new("pull-no-fetch-jsonl");
+    assert_success(
+        &gwz(temp.path())
+            .args(["--root", temp.path_str(), "init"])
+            .output()
+            .unwrap(),
+    );
+
+    create_repo_with_commit(&temp.path().join("local-repo"));
+    assert_success(
+        &gwz(temp.path())
+            .args(["--root", temp.path_str(), "add", "./local-repo"])
+            .output()
+            .unwrap(),
+    );
+
+    let remote = RemoteFixture::new("pull-no-fetch-source");
+    remote.commit_and_push("README.md", "one", "initial");
+    git2::Repository::clone(remote.url(), temp.path().join("remote")).unwrap();
+    assert_success(
+        &gwz(temp.path())
+            .args(["--root", temp.path_str(), "add", "./remote"])
+            .output()
+            .unwrap(),
+    );
+
+    let human = gwz(temp.path())
+        .args(["--root", temp.path_str(), "pull", "--head"])
+        .output()
+        .unwrap();
+    assert_success(&human);
+    let stdout = String::from_utf8_lossy(&human.stdout);
+    assert!(
+        stdout.contains("local-repo"),
+        "missing local member path:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("no fetch remote configured; skipping pull"),
+        "missing no-remote skip message:\n{stdout}"
+    );
+
+    let jsonl = gwz(temp.path())
+        .args(["--root", temp.path_str(), "--jsonl", "pull", "--head"])
+        .output()
+        .unwrap();
+    assert_success(&jsonl);
+    assert_jsonl_lifecycle(&jsonl);
+    let lines = json_lines(&jsonl);
+    let response = lines
+        .iter()
+        .find(|line| line["kind"] == "response")
+        .expect("jsonl carries a response record");
+    let members = response["members"].as_array().unwrap();
+    let local = members
+        .iter()
+        .find(|member| member["member_path"] == "local-repo")
+        .expect("local repo member is reported");
+    assert_eq!(local["status"], "Noop");
+    assert_eq!(
+        local["planned"]["message"],
+        "no fetch remote configured; skipping pull"
+    );
+    assert!(
+        members
+            .iter()
+            .any(|member| member["member_path"] == "remote"),
+        "remote member is still reported: {members:?}"
+    );
+}
+
+#[test]
+fn push_streams_member_lifecycle_events_as_jsonl() {
+    let temp = TempDir::new("push-jsonl");
+    let remote = RemoteFixture::new("push-jsonl-source");
+    remote.commit_and_push("README.md", "one", "initial");
+    assert_success(
+        &gwz(temp.path())
+            .args([
+                "--root",
+                temp.path_str(),
+                "init",
+                "--path",
+                "repos",
+                remote.url(),
+            ])
+            .output()
+            .unwrap(),
+    );
+    let local = commit_file(
+        &temp.path().join("repos/remote"),
+        "LOCAL.md",
+        "local",
+        "local",
+    );
+
+    let jsonl = gwz(temp.path())
+        .args([
+            "--root",
+            temp.path_str(),
+            "--jsonl",
+            "push",
+            "--remote",
+            "origin",
+        ])
+        .output()
+        .unwrap();
+
+    assert_success(&jsonl);
+    assert_jsonl_lifecycle(&jsonl);
+    let lines = json_lines(&jsonl);
+    let response = lines
+        .iter()
+        .find(|line| line["kind"] == "response")
+        .expect("jsonl carries a response record");
+    assert_eq!(response["meta"]["aggregate_status"], "Ok");
+    assert_eq!(
+        repo_ref(Path::new(remote.url()), "refs/heads/main"),
+        Some(local)
+    );
+}
+
+#[test]
 fn add_create_and_dry_run_commands_work() {
     let temp = TempDir::new("add-create");
     assert_success(
@@ -348,6 +471,34 @@ fn add_create_and_dry_run_commands_work() {
         .unwrap();
     assert_success(&dry_run);
     assert_eq!(json(&dry_run)["meta"]["aggregate_status"], "Accepted");
+}
+
+#[test]
+fn add_existing_repo_accepts_plain_relative_path_inside_workspace() {
+    let temp = TempDir::new("add-relative");
+    assert_success(
+        &gwz(temp.path())
+            .args(["--root", temp.path_str(), "init"])
+            .output()
+            .unwrap(),
+    );
+    create_repo_with_commit(&temp.path().join("local-repo"));
+
+    let output = gwz(temp.path())
+        .args(["add", "./local-repo"])
+        .output()
+        .unwrap();
+
+    assert_success(&output);
+    let status_json = gwz(temp.path())
+        .args(["--root", temp.path_str(), "--json", "status"])
+        .output()
+        .unwrap();
+    assert_success(&status_json);
+    assert_eq!(
+        json(&status_json)["members"][0]["member_path"],
+        "local-repo"
+    );
 }
 
 #[test]
@@ -657,6 +808,25 @@ fn json_lines(output: &Output) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect()
+}
+
+fn assert_jsonl_lifecycle(output: &Output) {
+    let event_kinds: Vec<String> = json_lines(output)
+        .iter()
+        .filter(|line| line["kind"] == "event")
+        .map(|line| line["event_kind"].as_str().unwrap().to_owned())
+        .collect();
+    for expected in [
+        "OperationStarted",
+        "MemberStarted",
+        "MemberFinished",
+        "OperationFinished",
+    ] {
+        assert!(
+            event_kinds.iter().any(|kind| kind == expected),
+            "missing {expected} in {event_kinds:?}"
+        );
+    }
 }
 
 fn create_repo_with_commit(path: &Path) -> String {
