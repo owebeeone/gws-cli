@@ -1,0 +1,351 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use super::*;
+
+#[test]
+pub(crate) fn parses_init_workspace_with_root() {
+    let invocation = parse_args_with_request_id(
+        strings(["--root", "/tmp/gwz-test", "init"]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    assert_eq!(invocation.output, OutputMode::Human);
+    let CliRequest::CreateWorkspace(request) = invocation.request else {
+        panic!("expected create workspace");
+    };
+    assert_eq!(request.workspace_root, "/tmp/gwz-test");
+    assert_eq!(request.meta.request_id, "req_test");
+}
+
+#[test]
+pub(crate) fn parses_init_sources_from_plain_urls() {
+    let invocation = parse_args_with_request_id(
+        strings([
+            "init",
+            "git@github.com:org/repo-a.git",
+            "https://github.com/org/repo-b",
+        ]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    let CliRequest::InitFromSources(request) = invocation.request else {
+        panic!("expected init from sources");
+    };
+    assert_eq!(request.workspace_root, "/cwd");
+    assert_eq!(request.sources[0].url, "git@github.com:org/repo-a.git");
+    assert_eq!(request.sources[0].path, None);
+    assert_eq!(request.sources[1].url, "https://github.com/org/repo-b");
+}
+
+#[test]
+pub(crate) fn parses_clone_with_explicit_and_derived_target() {
+    let with_dir = parse_args_with_request_id(
+        strings(["clone", "git@github.com:org/workspace.git", "work/demo"]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+    let CliRequest::CloneWorkspace { url, target, .. } = with_dir.request else {
+        panic!("expected clone workspace");
+    };
+    assert_eq!(url, "git@github.com:org/workspace.git");
+    assert_eq!(target, "work/demo");
+
+    let derived = parse_args_with_request_id(
+        strings(["clone", "https://github.com/org/workspace.git"]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+    let CliRequest::CloneWorkspace { target, .. } = derived.request else {
+        panic!("expected clone workspace");
+    };
+    assert_eq!(target, "workspace");
+}
+
+#[test]
+pub(crate) fn clone_rejects_dry_run() {
+    let error = parse_args_with_request_id(
+        strings(["--dry-run", "clone", "https://github.com/org/workspace.git"]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .message
+            .contains("--dry-run is not supported for clone")
+    );
+}
+
+#[test]
+pub(crate) fn parses_init_path_prefix_for_initial_sources() {
+    let invocation = parse_args_with_request_id(
+        strings([
+            "init",
+            "--path",
+            "repos",
+            "git@github.com:org/repo-a.git",
+            "https://github.com/org/repo-b",
+        ]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    let CliRequest::InitFromSources(request) = invocation.request else {
+        panic!("expected init from sources");
+    };
+    assert_eq!(request.sources[0].path, Some("repos/repo-a".to_owned()));
+    assert_eq!(request.sources[1].path, Some("repos/repo-b".to_owned()));
+}
+
+#[test]
+pub(crate) fn parses_global_selection_policy_and_output_flags() {
+    let invocation = parse_args_with_request_id(
+        strings([
+            "--root",
+            "/ws",
+            "--member",
+            "mem_app",
+            "--member-path",
+            "repos/lib",
+            "--dry-run",
+            "--partial",
+            "--force",
+            "--sync",
+            "reset",
+            "--remote",
+            "origin",
+            "--jobs",
+            "4",
+            "--json",
+            "status",
+        ]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    assert_eq!(invocation.output, OutputMode::Json);
+    let CliRequest::Status(request) = invocation.request else {
+        panic!("expected status");
+    };
+    let workspace = request.meta.workspace.unwrap();
+    assert_eq!(workspace.root, Some("/ws".to_owned()));
+    let selection = request.meta.selection.unwrap();
+    assert_eq!(selection.member_ids, vec!["mem_app"]);
+    assert_eq!(selection.paths, vec!["repos/lib"]);
+    let policy = request.meta.policy.unwrap();
+    assert_eq!(policy.partial, Some(gwz_core::PartialBehavior::Partial));
+    assert_eq!(
+        policy.destructive,
+        Some(gwz_core::DestructiveBehavior::Allow)
+    );
+    assert_eq!(policy.sync, Some(gwz_core::SyncBehavior::Reset));
+    assert_eq!(policy.remote, Some("origin".to_owned()));
+    assert_eq!(policy.concurrency, Some(4));
+    assert_eq!(request.meta.dry_run, Some(true));
+}
+
+#[test]
+pub(crate) fn parses_combined_status_flags() {
+    let invocation = parse_args_with_request_id(
+        strings(["status", "--porcelain", "--no-branches"]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    assert_eq!(invocation.output, OutputMode::Porcelain);
+    let CliRequest::Status(request) = invocation.request else {
+        panic!("expected status");
+    };
+    assert_eq!(request.mode, Some(gwz_core::StatusMode::Combined));
+    assert_eq!(request.include_file_changes, Some(true));
+    assert_eq!(request.include_branch_summary, Some(false));
+    assert_eq!(
+        request.path_style,
+        Some(gwz_core::StatusPathStyle::WorkspaceRelative)
+    );
+}
+
+#[test]
+pub(crate) fn parses_status_as_combined_by_default() {
+    let invocation =
+        parse_args_with_request_id(strings(["status"]), "req_test", Path::new("/cwd")).unwrap();
+
+    let CliRequest::Status(request) = invocation.request else {
+        panic!("expected status");
+    };
+    assert_eq!(request.mode, Some(gwz_core::StatusMode::Combined));
+    assert_eq!(request.include_file_changes, Some(true));
+    assert_eq!(request.include_branch_summary, Some(true));
+    assert_eq!(
+        request.path_style,
+        Some(gwz_core::StatusPathStyle::WorkspaceRelative)
+    );
+}
+
+#[test]
+pub(crate) fn parses_no_combined_status_as_summary_mode() {
+    let invocation = parse_args_with_request_id(
+        strings(["status", "--no-combined"]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    let CliRequest::Status(request) = invocation.request else {
+        panic!("expected status");
+    };
+    assert_eq!(request.mode, Some(gwz_core::StatusMode::Summary));
+    assert_eq!(request.include_file_changes, Some(true));
+    assert_eq!(request.include_branch_summary, Some(true));
+    assert_eq!(
+        request.path_style,
+        Some(gwz_core::StatusPathStyle::WorkspaceRelative)
+    );
+}
+
+#[test]
+pub(crate) fn parses_command_matrix() {
+    assert!(matches!(
+        parse(strings(["add", "repos/app"])).request,
+        CliRequest::AddExistingRepo(_)
+    ));
+    assert!(matches!(
+        parse(strings(["repo", "create", "repos/app"])).request,
+        CliRequest::CreateRepo(_)
+    ));
+    assert!(matches!(
+        parse(strings(["materialize", "--lock"])).request,
+        CliRequest::Materialize(_)
+    ));
+    assert!(matches!(
+        parse(strings(["materialize", "--snapshot", "snap_one"])).request,
+        CliRequest::Materialize(_)
+    ));
+    assert!(matches!(
+        parse(strings(["pull", "--head"])).request,
+        CliRequest::PullHead(_)
+    ));
+    assert!(matches!(
+        parse(strings(["pull", "--snapshot", "snap_one"])).request,
+        CliRequest::PullSnapshot(_)
+    ));
+    assert!(matches!(
+        parse(strings(["snapshot", "snap_one"])).request,
+        CliRequest::Snapshot(_)
+    ));
+    assert!(matches!(
+        parse(strings(["tag", "release_one"])).request,
+        CliRequest::Tag(_)
+    ));
+    assert!(matches!(
+        parse(strings(["push"])).request,
+        CliRequest::Push(_)
+    ));
+}
+
+#[test]
+pub(crate) fn rejects_invalid_command_combinations_before_core_execution() {
+    assert!(parse_result(strings(["--json", "--jsonl", "status"])).is_err());
+    assert!(parse_result(strings(["--all", "--member", "mem_app", "status"])).is_err());
+    assert!(parse_result(strings(["--path", "repos/lib", "status"])).is_err());
+    assert!(parse_result(strings(["status", "--no-files", "--no-branches"])).is_err());
+    assert!(parse_result(strings(["status", "--combined", "--no-combined"])).is_err());
+    assert!(parse_result(strings(["status", "--porcelain", "--no-combined"])).is_err());
+    assert!(parse_result(strings(["status", "--no-combined", "--no-files"])).is_err());
+    assert!(parse_result(strings(["push", "--combined"])).is_err());
+    assert!(parse_result(strings(["push", "--no-combined"])).is_err());
+    assert!(parse_result(strings(["materialize", "--snapshot"])).is_err());
+    assert!(parse_result(strings(["pull", "--lock"])).is_err());
+    assert!(parse_result(strings(["unknown"])).is_err());
+}
+
+#[test]
+pub(crate) fn can_call_core_status_in_process() {
+    let temp = TempDir::new("cli-status");
+    gwz_core::workspace_ops::handle_create_workspace(
+        gwz_core::CreateWorkspaceRequest {
+            meta: request_meta("req_setup"),
+            workspace_root: temp.path().to_string_lossy().into_owned(),
+            workspace_id: Some("ws_cli".to_owned()),
+        },
+        "op_setup",
+    )
+    .unwrap();
+    let invocation = parse_args_with_request_id(
+        strings([
+            "--root",
+            temp.path().to_str().unwrap(),
+            "status",
+            "--no-combined",
+        ]),
+        "req_status",
+        temp.path(),
+    )
+    .unwrap();
+
+    let response = execute_invocation(&invocation).unwrap();
+
+    assert_eq!(
+        response.envelope.meta.aggregate_status,
+        gwz_core::AggregateStatus::Ok
+    );
+    assert!(response.envelope.members.is_empty());
+}
+
+pub(crate) fn parse(args: Vec<String>) -> CliInvocation {
+    parse_result(args).unwrap()
+}
+
+pub(crate) fn parse_result(args: Vec<String>) -> Result<CliInvocation, CliError> {
+    parse_args_with_request_id(args, "req_test", Path::new("/cwd"))
+}
+
+pub(crate) fn strings<const N: usize>(items: [&str; N]) -> Vec<String> {
+    items.iter().map(|item| (*item).to_owned()).collect()
+}
+
+pub(crate) fn request_meta(request_id: &str) -> gwz_core::RequestMeta {
+    gwz_core::RequestMeta {
+        request_id: request_id.to_owned(),
+        schema_version: "gwz.protocol/v0".to_owned(),
+        ..Default::default()
+    }
+}
+
+pub(crate) struct TempDir {
+    pub(crate) path: PathBuf,
+}
+
+impl TempDir {
+    pub(crate) fn new(prefix: &str) -> Self {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("gwz-cli-{prefix}-{}-{unique}", std::process::id()));
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
