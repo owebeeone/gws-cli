@@ -467,6 +467,27 @@ pub(crate) fn response_json(response: &CliResponse) -> serde_json::Value {
     })
 }
 
+/// F9: render a top-level CLI error as structured JSON, envelope-consistent with
+/// `response_json` (same keys; the error sits in `errors`, no members).
+pub(crate) fn render_error_json(error: &CliError) -> String {
+    serde_json::json!({
+        "kind": "response",
+        "meta": serde_json::Value::Null,
+        "members": [],
+        "errors": [{
+            "code": error
+                .code
+                .map(|code| format!("{:?}", gwz_core::GwzErrorCode::from(code))),
+            "message": error.message,
+            "member_id": serde_json::Value::Null,
+            "member_path": serde_json::Value::Null,
+            "detail": serde_json::Value::Null,
+        }],
+        "workspace_git_status": serde_json::Value::Null,
+    })
+    .to_string()
+}
+
 pub(crate) fn result_json(result: &gwz_core::OperationResult) -> serde_json::Value {
     serde_json::json!({
         "kind": "result",

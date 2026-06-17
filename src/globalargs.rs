@@ -388,7 +388,7 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
         )
         .map(|response| CliResponse::envelope(response.response)),
     };
-    response.map_err(|error| CliError::new(error.to_string()))
+    response.map_err(CliError::from_model)
 }
 
 pub(crate) fn render_response(response: &CliResponse, output: OutputMode) -> String {

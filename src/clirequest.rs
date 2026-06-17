@@ -131,12 +131,32 @@ pub(crate) fn operation_label(request: &CliRequest) -> &'static str {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CliError {
     pub(crate) message: String,
+    pub(crate) code: Option<gwz_core::model::ErrorCode>,
 }
 
 impl CliError {
     pub(crate) fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            code: None,
+        }
+    }
+
+    /// Preserve a gwz-core error's code (so `--json`/`--jsonl` can emit it
+    /// structured) alongside its message.
+    pub(crate) fn from_model(error: gwz_core::model::ModelError) -> Self {
+        Self {
+            message: error.message,
+            code: Some(error.code),
+        }
+    }
+
+    /// Human rendering: prefix with the error code when present, matching
+    /// gwz-core's `ModelError` Display.
+    pub(crate) fn human_message(&self) -> String {
+        match self.code {
+            Some(code) => format!("{code:?}: {}", self.message),
+            None => self.message.clone(),
         }
     }
 }

@@ -5,6 +5,33 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::*;
 
 #[test]
+pub(crate) fn error_path_renders_structured_json_envelope() {
+    // F9: a top-level error carrying a gwz-core code renders envelope-consistent JSON.
+    let error = CliError {
+        message: "member has uncommitted changes".to_owned(),
+        code: Some(gwz_core::model::ErrorCode::DirtyMember),
+    };
+    let json: serde_json::Value = serde_json::from_str(&render_error_json(&error)).unwrap();
+    assert_eq!(json["kind"], "response");
+    assert!(json["members"].as_array().unwrap().is_empty());
+    assert_eq!(
+        json["errors"][0]["message"],
+        "member has uncommitted changes"
+    );
+    assert!(json["errors"][0]["code"].as_str().unwrap().contains("Dirty"));
+    assert_eq!(
+        error.human_message(),
+        "DirtyMember: member has uncommitted changes"
+    );
+
+    // A CLI validation error (no gwz-core code) still renders structured, code null.
+    let plain = CliError::new("--json and --jsonl are mutually exclusive");
+    let json: serde_json::Value = serde_json::from_str(&render_error_json(&plain)).unwrap();
+    assert!(json["errors"][0]["code"].is_null());
+    assert_eq!(plain.human_message(), "--json and --jsonl are mutually exclusive");
+}
+
+#[test]
 pub(crate) fn json_renderer_outputs_structured_response() {
     let response = CliResponse::envelope(sample_response(
         gwz_core::AggregateStatus::Ok,

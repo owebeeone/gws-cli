@@ -98,12 +98,21 @@ fn main() {
                 std::process::exit(exit_code_for_response(&response.envelope));
             }
             Err(error) => {
-                eprintln!("gwz: {}", error.message);
+                // F9: structured machine output keeps errors on the same channel
+                // and shape as success; human/porcelain stay on stderr.
+                match invocation.output {
+                    OutputMode::Json | OutputMode::Jsonl => {
+                        println!("{}", render_error_json(&error));
+                    }
+                    OutputMode::Human | OutputMode::Porcelain => {
+                        eprintln!("gwz: {}", error.human_message());
+                    }
+                }
                 std::process::exit(1);
             }
         },
         Err(error) => {
-            eprintln!("gwz: {}", error.message);
+            eprintln!("gwz: {}", error.human_message());
             std::process::exit(2);
         }
     }
