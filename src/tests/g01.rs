@@ -155,6 +155,22 @@ pub(crate) fn parses_global_selection_policy_and_output_flags() {
 }
 
 #[test]
+pub(crate) fn capture_verb_parses_with_selection() {
+    let invocation = parse_args_with_request_id(
+        strings(["--root", "/ws", "--member", "mem_app", "capture"]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    let CliRequest::Capture(request) = invocation.request else {
+        panic!("expected capture");
+    };
+    assert_eq!(request.meta.workspace.unwrap().root, Some("/ws".to_owned()));
+    assert_eq!(request.meta.selection.unwrap().member_ids, vec!["mem_app"]);
+}
+
+#[test]
 pub(crate) fn parses_combined_status_flags() {
     let invocation = parse_args_with_request_id(
         strings(["status", "--porcelain", "--no-branches"]),

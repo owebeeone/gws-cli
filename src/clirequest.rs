@@ -104,6 +104,7 @@ pub(crate) enum CliRequest {
     PullHead(gwz_core::PullHeadRequest),
     PullSnapshot(gwz_core::PullSnapshotRequest),
     Push(gwz_core::PushRequest),
+    Capture(gwz_core::CaptureRequest),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -270,6 +271,7 @@ impl Cli {
                 refspec: None,
                 meta,
             })),
+            CommandArgs::Capture => Ok(CliRequest::Capture(gwz_core::CaptureRequest { meta })),
         }
     }
 }

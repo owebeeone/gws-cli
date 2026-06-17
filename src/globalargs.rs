@@ -216,6 +216,8 @@ pub(crate) enum CommandArgs {
         after_long_help = PUSH_AFTER
     )]
     Push,
+    #[command(about = "Record the live worktree state into the lock (no mutation)")]
+    Capture,
 }
 
 #[derive(Clone, Debug, Args)]
@@ -387,6 +389,10 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
             events,
         )
         .map(|response| CliResponse::envelope(response.response)),
+        CliRequest::Capture(request) => {
+            gwz_core::workspace_ops::handle_capture(&backend, start, request.clone(), operation_id)
+                .map(|response| CliResponse::envelope(response.response))
+        }
     };
     response.map_err(CliError::from_model)
 }
