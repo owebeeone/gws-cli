@@ -1,9 +1,14 @@
 [package]
-name = "gwz-cli"
+name = "gwz"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-2.0-only"
 rust-version = "1.95"
+description = "Command-line driver for GWZ multi-repository workspaces."
+repository = "https://github.com/owebeeone/gwz-cli"
+
+[package.metadata.dist]
+dist = true
 
 [[bin]]
 name = "gwz"
@@ -12,8 +17,13 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive", "wrap_help"] }
 console = "0.16"
-gwz-core = { path = "../gwz-core" }
+gwz-core = { git = "https://github.com/owebeeone/gwz-core" }
 serde_json = "1"
 
 [dev-dependencies]
 git2 = "0.21"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

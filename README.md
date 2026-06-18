@@ -1,6 +1,6 @@
-# gwz-cli
+# gwz
 
-`gwz-cli` provides the `gwz` command-line driver for `gwz-core`.
+`gwz` is the command-line driver for `gwz-core`.
 
 The CLI is intentionally thin: it parses argv, builds GWZ requests, calls
 `gwz-core`, and renders responses/events.
@@ -78,6 +78,82 @@ cargo fmt --check
 cargo run -- --version
 ```
 
+## Install
+
+Install the latest release on macOS or Linux:
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/owebeeone/gwz-cli/releases/latest/download/gwz-installer.sh | sh
+```
+
+Install the latest release on Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/owebeeone/gwz-cli/releases/latest/download/gwz-installer.ps1 | iex"
+```
+
+The `latest` URLs point at the newest non-prerelease GitHub Release. If you want
+a pinned install, replace `latest` with a concrete tag such as `v0.1.0`:
+
+```text
+https://github.com/owebeeone/gwz-cli/releases/download/v0.1.0/gwz-installer.sh
+```
+
+Users who already have Rust can install from source:
+
+```sh
+cargo install --git https://github.com/owebeeone/gwz-cli
+```
+
+### Smoke Test Installers
+
+Test the Unix installer without modifying `PATH`:
+
+```sh
+tmp="$(mktemp -d)"
+
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/owebeeone/gwz-cli/releases/latest/download/gwz-installer.sh \
+  -o "${tmp}/gwz-installer.sh"
+
+GWZ_UNMANAGED_INSTALL="${tmp}/bin" \
+GWZ_NO_MODIFY_PATH=1 \
+sh "${tmp}/gwz-installer.sh"
+
+"${tmp}/bin/gwz" --version
+"${tmp}/bin/gwz" --help
+```
+
+Test the Windows installer without modifying `PATH`:
+
+```powershell
+$ErrorActionPreference = "Stop"
+
+$tmp = Join-Path $env:TEMP "gwz-test-$([guid]::NewGuid())"
+New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+
+$installer = Join-Path $tmp "gwz-installer.ps1"
+Invoke-WebRequest `
+  "https://github.com/owebeeone/gwz-cli/releases/latest/download/gwz-installer.ps1" `
+  -OutFile $installer
+
+$env:GWZ_UNMANAGED_INSTALL = Join-Path $tmp "bin"
+$env:GWZ_NO_MODIFY_PATH = "1"
+
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+& $installer
+
+$exe = Join-Path $env:GWZ_UNMANAGED_INSTALL "gwz.exe"
+& $exe --version
+& $exe --help
+```
+
+Release assets are checksummed and have GitHub artifact attestations. The
+installers are convenience scripts; users who want stronger verification should
+download the release asset, verify the attestation, compare the SHA-256 checksum,
+and then install.
+
 ## CLI Help And Docs
 
 CLI help is generated from the command parser. The `clap` command definitions
@@ -86,4 +162,4 @@ docs such as `docs/CLI.md`.
 
 ## License
 
-`gwz-cli` is licensed under GPL-2.0-only, the same license family used by Git.
+`gwz` is licensed under GPL-2.0-only, the same license family used by Git.

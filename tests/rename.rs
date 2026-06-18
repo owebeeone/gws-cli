@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 #[test]
 fn package_name_uses_project_token() {
-    assert_eq!(env!("CARGO_PKG_NAME"), "gwz-cli");
+    assert_eq!(env!("CARGO_PKG_NAME"), "gwz");
 }
 
 #[test]

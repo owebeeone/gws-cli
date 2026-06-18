@@ -1,33 +1,36 @@
-const PUBLISH_WORKFLOW: &str = include_str!("../.github/workflows/publish.yml");
+const RELEASE_WORKFLOW: &str = include_str!("../.github/workflows/release.yml");
+const DIST_WORKSPACE: &str = include_str!("../dist-workspace.toml");
 
 #[test]
-fn publish_workflow_tests_linux_and_windows() {
-    assert!(PUBLISH_WORKFLOW.contains("ubuntu-latest"));
-    assert!(PUBLISH_WORKFLOW.contains("windows-latest"));
-    assert!(PUBLISH_WORKFLOW.contains("cargo test"));
-    assert!(PUBLISH_WORKFLOW.contains("cargo clippy --all-targets -- -D warnings"));
+fn release_workflow_only_runs_for_explicit_releases() {
+    assert!(RELEASE_WORKFLOW.contains("release:"));
+    assert!(RELEASE_WORKFLOW.contains("types: [published]"));
+    assert!(RELEASE_WORKFLOW.contains("workflow_dispatch"));
+    assert!(!RELEASE_WORKFLOW.contains("pull_request:"));
+    assert!(!RELEASE_WORKFLOW.contains("branches:"));
 }
 
 #[test]
-fn publish_workflow_checks_out_core_as_sibling_dependency() {
-    assert!(PUBLISH_WORKFLOW.contains("repository: owebeeone/gwz-core"));
-    assert!(PUBLISH_WORKFLOW.contains("path: gwz-core"));
-    assert!(PUBLISH_WORKFLOW.contains("path: gwz-cli"));
+fn release_workflow_builds_rust_split_platform_parity() {
+    assert!(DIST_WORKSPACE.contains("aarch64-apple-darwin"));
+    assert!(DIST_WORKSPACE.contains("x86_64-apple-darwin"));
+    assert!(DIST_WORKSPACE.contains("aarch64-unknown-linux-gnu"));
+    assert!(DIST_WORKSPACE.contains("x86_64-unknown-linux-gnu"));
+    assert!(DIST_WORKSPACE.contains("x86_64-pc-windows-msvc"));
 }
 
 #[test]
-fn publish_workflow_installs_release_taut_proto_for_core_protocol_tests() {
-    assert!(PUBLISH_WORKFLOW.contains("actions/setup-python"));
-    assert!(PUBLISH_WORKFLOW.contains("TAUT_PYTHON: python"));
-    assert!(PUBLISH_WORKFLOW.contains("python -m pip install --upgrade pip taut-proto"));
+fn release_workflow_uses_cargo_dist_installers() {
+    assert!(RELEASE_WORKFLOW.contains("cargo-dist-installer.sh"));
+    assert!(RELEASE_WORKFLOW.contains("dist host --steps=create"));
+    assert!(RELEASE_WORKFLOW.contains("dist build"));
 }
 
 #[test]
-fn publish_workflow_builds_installable_release_assets() {
-    assert!(PUBLISH_WORKFLOW.contains("x86_64-unknown-linux-gnu"));
-    assert!(PUBLISH_WORKFLOW.contains("x86_64-pc-windows-msvc"));
-    assert!(PUBLISH_WORKFLOW.contains("cargo build --release --locked"));
-    assert!(PUBLISH_WORKFLOW.contains("gwz-${{ steps.version.outputs.version }}"));
-    assert!(PUBLISH_WORKFLOW.contains("gh release create"));
-    assert!(PUBLISH_WORKFLOW.contains("SHA256SUMS"));
+fn release_workflow_uploads_and_attests_release_assets() {
+    assert!(RELEASE_WORKFLOW.contains("actions/attest-build-provenance"));
+    assert!(RELEASE_WORKFLOW.contains("artifacts/*.sha256"));
+    assert!(RELEASE_WORKFLOW.contains("artifacts/sha256.sum"));
+    assert!(RELEASE_WORKFLOW.contains("gh release edit"));
+    assert!(RELEASE_WORKFLOW.contains("gh release upload"));
 }
