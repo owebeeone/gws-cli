@@ -80,6 +80,7 @@ pub(crate) fn render_human_status_response(
     }
     append_unmaterialized_notice(&mut lines, response);
     append_status_issues(&mut lines, response);
+    append_suppressed_dirty_summary(&mut lines, response, workspace_status);
     if lines.is_empty() {
         lines.push("nothing to commit, working tree clean".to_owned());
     }
@@ -244,6 +245,49 @@ pub(crate) fn append_per_repo_status(
         lines.push(format_member_status_heading(member));
         append_change_sections(lines, &changes);
     }
+}
+
+/// F16: a dirty tree whose per-file detail was suppressed (`--no-files`) must not vanish
+/// from the human output — the counts (`dirty`/staged/unstaged/untracked) are first-class
+/// on `GitStatus`, independent of the file list. Surface a count summary for the root and
+/// each member that is dirty but produced no rendered file changes.
+pub(crate) fn append_suppressed_dirty_summary(
+    lines: &mut Vec<String>,
+    response: &CliResponse,
+    workspace_status: &gwz_core::WorkspaceGitStatus,
+) {
+    let mut summary = Vec::new();
+    if let Some(root) = workspace_status.root_status.as_ref()
+        && root.dirty
+        && root_human_changes(workspace_status).is_empty()
+    {
+        summary.push(format!(
+            "  workspace root: {} staged, {} unstaged, {} untracked",
+            root.staged, root.unstaged, root.untracked
+        ));
+    }
+    for member in &response.envelope.members {
+        if is_unmaterialized(member) {
+            continue;
+        }
+        let Some(status) = member.git_status.as_ref() else {
+            continue;
+        };
+        if status.dirty
+            && member_human_changes(workspace_status, Some(&member.member_id)).is_empty()
+        {
+            summary.push(format!(
+                "  {}: {} staged, {} unstaged, {} untracked",
+                member.member_path, status.staged, status.unstaged, status.untracked
+            ));
+        }
+    }
+    if summary.is_empty() {
+        return;
+    }
+    push_blank(lines);
+    lines.push("Uncommitted changes (file detail omitted; re-run without --no-files):".to_owned());
+    lines.extend(summary);
 }
 
 pub(crate) fn append_status_issues(lines: &mut Vec<String>, response: &CliResponse) {

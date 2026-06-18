@@ -135,6 +135,72 @@ pub(crate) fn exit_code_mapping_distinguishes_success_rejected_and_failed() {
     );
 }
 
+#[test]
+pub(crate) fn no_files_still_surfaces_dirty_member_counts() {
+    // F16: `--no-files` suppresses the per-file list (empty `file_changes`), but a dirty
+    // member must still surface via its first-class counts — not silently vanish.
+    let mut envelope = sample_response(
+        gwz_core::AggregateStatus::Ok,
+        gwz_core::MemberStatus::Ok,
+    );
+    envelope.members[0].git_status = Some(dirty_git_status("mem_app", 0, 2, 1));
+    let cli = CliResponse::envelope(envelope);
+    let workspace = empty_workspace_git_status();
+
+    let mut lines = Vec::new();
+    append_suppressed_dirty_summary(&mut lines, &cli, &workspace);
+    let out = lines.join("\n");
+    assert!(out.contains("file detail omitted"), "got: {out}");
+    assert!(
+        out.contains("repos/app: 0 staged, 2 unstaged, 1 untracked"),
+        "got: {out}"
+    );
+
+    // A clean member contributes nothing.
+    let mut clean = sample_response(gwz_core::AggregateStatus::Ok, gwz_core::MemberStatus::Ok);
+    clean.members[0].git_status = Some(dirty_git_status("mem_app", 0, 0, 0));
+    let mut clean_lines = Vec::new();
+    append_suppressed_dirty_summary(
+        &mut clean_lines,
+        &CliResponse::envelope(clean),
+        &workspace,
+    );
+    assert!(clean_lines.is_empty());
+}
+
+pub(crate) fn dirty_git_status(
+    member_id: &str,
+    staged: i64,
+    unstaged: i64,
+    untracked: i64,
+) -> gwz_core::GitStatus {
+    gwz_core::GitStatus {
+        member_id: member_id.to_owned(),
+        branch: Some("main".to_owned()),
+        detached: false,
+        head: None,
+        upstream: None,
+        ahead: None,
+        behind: None,
+        staged,
+        unstaged,
+        untracked,
+        dirty: staged + unstaged + untracked > 0,
+    }
+}
+
+pub(crate) fn empty_workspace_git_status() -> gwz_core::WorkspaceGitStatus {
+    gwz_core::WorkspaceGitStatus {
+        clean: false,
+        file_changes: Vec::new(),
+        branches: Vec::new(),
+        branch_groups: Vec::new(),
+        branch_differences: Vec::new(),
+        root_status: None,
+        root_file_changes: Vec::new(),
+    }
+}
+
 pub(crate) fn sample_response(
     aggregate_status: gwz_core::AggregateStatus,
     member_status: gwz_core::MemberStatus,
