@@ -224,7 +224,7 @@ dependencies = [
 [[package]]
 name = "gwz-core"
 version = "0.1.0"
-source = "git+https://github.com/owebeeone/gwz-core#c864ab8b8c0d78df91a6cc238973f6dec9e6b1d3"
+source = "git+https://github.com/owebeeone/gwz-core?tag=v0.1.0#ba31a2528bb68ce1eb80df6e58cf5f3a9bf47dca"
 dependencies = [
  "git2",
  "serde",
