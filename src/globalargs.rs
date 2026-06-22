@@ -152,6 +152,16 @@ pub(crate) struct GlobalArgs {
         long_help = "Render newline-delimited JSON records for streaming operation consumers."
     )]
     pub(crate) jsonl: bool,
+
+    #[arg(
+        long = "ssh-timeout",
+        global = true,
+        value_name = "secs",
+        value_parser = parse_non_negative_i64,
+        help = "Abort a stalled SSH/network read after N seconds (0 = no timeout, default 3)",
+        long_help = "Maximum seconds to wait on a stalled SSH/network read before failing. libssh2 has no timeout by default, so a missing ssh-agent identity or an unreachable host would otherwise hang forever. 0 disables the timeout. Defaults to 3."
+    )]
+    pub(crate) ssh_timeout: Option<i64>,
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -169,13 +179,7 @@ pub(crate) enum CommandArgs {
     )]
     Clone(CloneArgs),
     #[command(
-        about = "Add an existing git repository to the workspace",
-        long_about = ADD_LONG,
-        after_long_help = ADD_AFTER
-    )]
-    Add(AddArgs),
-    #[command(
-        about = "Manage workspace repositories",
+        about = "Manage workspace repositories (add an existing repo, or create one)",
         long_about = REPO_LONG,
         after_long_help = REPO_AFTER
     )]
@@ -218,6 +222,8 @@ pub(crate) enum CommandArgs {
     Push,
     #[command(about = "Record the live worktree state into the lock (no mutation)")]
     Capture,
+    #[command(about = "Commit staged changes across members and the workspace root")]
+    Commit(CommitArgs),
 }
 
 #[derive(Clone, Debug, Args)]
@@ -391,6 +397,10 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
         .map(|response| CliResponse::envelope(response.response)),
         CliRequest::Capture(request) => {
             gwz_core::workspace_ops::handle_capture(&backend, start, request.clone(), operation_id)
+                .map(|response| CliResponse::envelope(response.response))
+        }
+        CliRequest::Commit(request) => {
+            gwz_core::workspace_ops::handle_commit(&backend, start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
         }
     };

@@ -68,8 +68,8 @@ fn every_command_help_has_semantics_and_examples() {
     let temp = TempDir::new("all-help");
     for command in [
         &["init"][..],
-        &["add"][..],
         &["repo"][..],
+        &["repo", "add"][..],
         &["repo", "create"][..],
         &["status"][..],
         &["snapshot"][..],
@@ -324,7 +324,7 @@ fn pull_head_skips_member_without_fetch_remote_and_streams_events() {
     create_repo_with_commit(&temp.path().join("local-repo"));
     assert_success(
         &gwz(temp.path())
-            .args(["--root", temp.path_str(), "add", "./local-repo"])
+            .args(["--root", temp.path_str(), "repo", "add", "./local-repo"])
             .output()
             .unwrap(),
     );
@@ -334,7 +334,7 @@ fn pull_head_skips_member_without_fetch_remote_and_streams_events() {
     git2::Repository::clone(remote.url(), temp.path().join("remote")).unwrap();
     assert_success(
         &gwz(temp.path())
-            .args(["--root", temp.path_str(), "add", "./remote"])
+            .args(["--root", temp.path_str(), "repo", "add", "./remote"])
             .output()
             .unwrap(),
     );
@@ -448,7 +448,7 @@ fn add_create_and_dry_run_commands_work() {
     create_repo_with_commit(&existing);
     assert_success(
         &gwz(temp.path())
-            .args(["--root", temp.path_str(), "add", existing.to_str().unwrap()])
+            .args(["--root", temp.path_str(), "repo", "add", existing.to_str().unwrap()])
             .output()
             .unwrap(),
     );
@@ -485,7 +485,7 @@ fn add_existing_repo_accepts_plain_relative_path_inside_workspace() {
     create_repo_with_commit(&temp.path().join("local-repo"));
 
     let output = gwz(temp.path())
-        .args(["add", "./local-repo"])
+        .args(["repo", "add", "./local-repo"])
         .output()
         .unwrap();
 

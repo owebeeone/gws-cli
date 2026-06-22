@@ -233,7 +233,7 @@ pub(crate) fn parses_no_combined_status_as_summary_mode() {
 #[test]
 pub(crate) fn parses_command_matrix() {
     assert!(matches!(
-        parse(strings(["add", "repos/app"])).request,
+        parse(strings(["repo", "add", "repos/app"])).request,
         CliRequest::AddExistingRepo(_)
     ));
     assert!(matches!(

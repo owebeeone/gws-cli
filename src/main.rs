@@ -81,6 +81,12 @@ pub(crate) use unique_suffix::*;
 
 fn main() {
     let cli = Cli::parse();
+    // Bound stalled SSH/network reads (libssh2 has no timeout by default, so a missing
+    // ssh-agent identity or unreachable host would hang forever). Set once, before any
+    // operation spawns threads. `--ssh-timeout` is in seconds (0 disables); default 3s.
+    let ssh_timeout_ms = (cli.global.ssh_timeout.unwrap_or(3).saturating_mul(1000))
+        .clamp(0, i32::MAX as i64) as i32;
+    gwz_core::git::set_server_timeout_ms(ssh_timeout_ms);
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
         Err(error) => {

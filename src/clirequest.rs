@@ -31,6 +31,12 @@ pub(crate) struct AddArgs {
 #[derive(Clone, Debug, Subcommand)]
 pub(crate) enum RepoCommandArgs {
     #[command(
+        about = "Add an existing git repository as a member",
+        long_about = ADD_LONG,
+        after_long_help = ADD_AFTER
+    )]
+    Add(AddArgs),
+    #[command(
         about = "Create a new repository member",
         long_about = REPO_CREATE_LONG,
         after_long_help = REPO_CREATE_AFTER
@@ -79,6 +85,24 @@ pub(crate) struct PullArgs {
     pub(crate) snapshot: Option<String>,
 }
 
+#[derive(Clone, Debug, Args)]
+pub(crate) struct CommitArgs {
+    #[arg(
+        short = 'm',
+        long,
+        value_name = "message",
+        help = "Commit message applied to every committed repo"
+    )]
+    pub(crate) message: String,
+
+    #[arg(
+        short = 'a',
+        long,
+        help = "Stage tracked modifications first (git commit -a)"
+    )]
+    pub(crate) all: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CliInvocation {
     pub(crate) request: CliRequest,
@@ -105,6 +129,7 @@ pub(crate) enum CliRequest {
     PullSnapshot(gwz_core::PullSnapshotRequest),
     Push(gwz_core::PushRequest),
     Capture(gwz_core::CaptureRequest),
+    Commit(gwz_core::CommitRequest),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -253,7 +278,6 @@ impl Cli {
         match &self.command {
             CommandArgs::Init(args) => args.request(meta, workspace_root),
             CommandArgs::Clone(args) => args.request(meta),
-            CommandArgs::Add(args) => args.request(meta),
             CommandArgs::Repo(args) => args.request(meta),
             CommandArgs::Status(args) => args.request(meta),
             CommandArgs::Snapshot(args) => Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest {
@@ -272,6 +296,7 @@ impl Cli {
                 meta,
             })),
             CommandArgs::Capture => Ok(CliRequest::Capture(gwz_core::CaptureRequest { meta })),
+            CommandArgs::Commit(args) => args.request(meta),
         }
     }
 }
@@ -351,6 +376,7 @@ impl AddArgs {
 impl RepoArgs {
     pub(crate) fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
         match &self.command {
+            RepoCommandArgs::Add(args) => args.request(meta),
             RepoCommandArgs::Create(args) => {
                 Ok(CliRequest::CreateRepo(gwz_core::CreateRepoRequest {
                     meta,
@@ -418,6 +444,16 @@ impl PullArgs {
             })),
             _ => Ok(CliRequest::PullHead(gwz_core::PullHeadRequest { meta })),
         }
+    }
+}
+
+impl CommitArgs {
+    pub(crate) fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        Ok(CliRequest::Commit(gwz_core::CommitRequest {
+            meta,
+            message: self.message.clone(),
+            all: self.all.then_some(true),
+        }))
     }
 }
 

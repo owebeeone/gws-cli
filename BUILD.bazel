@@ -1,0 +1,20 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+
+exports_files(["Cargo.toml"])  # crate_universe reads this
+
+# gwz — the GWZ CLI binary, atop gwz-core + clap/console/serde_json.
+# NOTE: gwz-core is wired to the LOCAL crate (//gwz-core:gwz_core), not the git tag in
+# Cargo.toml. For crate_universe to agree, gwz-cli's `gwz-core` dep must be a workspace/path
+# dep (see the workspace Cargo.toml requirement in MODULE.bazel comments).
+rust_binary(
+    name = "gwz",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/main.rs",
+    edition = "2024",
+    compile_data = glob(["**/*"], exclude = ["**/*.rs", "BUILD.bazel", "Cargo.toml"], allow_empty = True),
+    aliases = aliases(),
+    deps = all_crate_deps(normal = True) + ["//gwz-core:gwz_core"],
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+    visibility = ["//visibility:public"],
+)
