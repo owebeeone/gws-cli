@@ -12,7 +12,7 @@ gwz init
 gwz init --path <path-prefix> <url>...
 gwz init <url>...
 gwz clone <url> [directory]
-gwz add <repo-path>
+gwz repo add <repo-path>
 gwz repo create <member-path>
 gwz status
 gwz status --no-combined
