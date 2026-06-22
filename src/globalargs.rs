@@ -152,6 +152,16 @@ pub(crate) struct GlobalArgs {
         long_help = "Render newline-delimited JSON records for streaming operation consumers."
     )]
     pub(crate) jsonl: bool,
+
+    #[arg(
+        long = "ssh-timeout",
+        global = true,
+        value_name = "secs",
+        value_parser = parse_non_negative_i64,
+        help = "Abort a stalled SSH/network read after N seconds (0 = no timeout, default 3)",
+        long_help = "Maximum seconds to wait on a stalled SSH/network read before failing. libssh2 has no timeout by default, so a missing ssh-agent identity or an unreachable host would otherwise hang forever. 0 disables the timeout. Defaults to 3."
+    )]
+    pub(crate) ssh_timeout: Option<i64>,
 }
 
 #[derive(Clone, Debug, Subcommand)]
