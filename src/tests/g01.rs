@@ -240,6 +240,11 @@ pub(crate) fn parses_command_matrix() {
         parse(strings(["add", "src/foo.rs"])).request,
         CliRequest::Stage(_)
     ));
+    assert!(matches!(parse(strings(["tag"])).request, CliRequest::ListTags));
+    assert!(matches!(parse(strings(["tag", "--list"])).request, CliRequest::ListTags));
+    assert!(matches!(parse(strings(["tag", "v1"])).request, CliRequest::Tag(_)));
+    assert!(matches!(parse(strings(["snapshot"])).request, CliRequest::ListSnapshots));
+    assert!(matches!(parse(strings(["snapshot", "snap"])).request, CliRequest::Snapshot(_)));
     assert!(matches!(
         parse(strings(["repo", "create", "repos/app"])).request,
         CliRequest::CreateRepo(_)

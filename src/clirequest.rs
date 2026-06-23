@@ -147,6 +147,8 @@ pub(crate) enum CliRequest {
     Capture(gwz_core::CaptureRequest),
     Commit(gwz_core::CommitRequest),
     Stage(gwz_core::StageRequest),
+    ListTags,
+    ListSnapshots,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -299,14 +301,18 @@ impl Cli {
             CommandArgs::Add(args) => args.request(meta, current_dir),
             CommandArgs::Repo(args) => args.request(meta),
             CommandArgs::Status(args) => args.request(meta),
-            CommandArgs::Snapshot(args) => Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest {
-                meta,
-                snapshot_id: args.name.clone(),
-            })),
-            CommandArgs::Tag(args) => Ok(CliRequest::Tag(gwz_core::TagRequest {
-                meta,
-                tag_name: args.name.clone(),
-            })),
+            CommandArgs::Snapshot(args) => match args.name.clone() {
+                Some(name) if !args.list => {
+                    Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest { meta, snapshot_id: name }))
+                }
+                _ => Ok(CliRequest::ListSnapshots),
+            },
+            CommandArgs::Tag(args) => match args.name.clone() {
+                Some(name) if !args.list => {
+                    Ok(CliRequest::Tag(gwz_core::TagRequest { meta, tag_name: name }))
+                }
+                _ => Ok(CliRequest::ListTags),
+            },
             CommandArgs::Materialize(args) => args.request(meta),
             CommandArgs::Pull(args) => args.request(meta),
             CommandArgs::Push => Ok(CliRequest::Push(gwz_core::PushRequest {

@@ -2,10 +2,17 @@
 use crate::*;
 
 #[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ArtifactListing {
+    Tags(Vec<gwz_core::artifact::TagArtifact>),
+    Snapshots(Vec<gwz_core::artifact::SnapshotArtifact>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CliResponse {
     pub(crate) envelope: gwz_core::ResponseEnvelope,
     pub(crate) workspace_git_status: Option<gwz_core::WorkspaceGitStatus>,
     pub(crate) status_mode: Option<gwz_core::StatusMode>,
+    pub(crate) listing: Option<ArtifactListing>,
 }
 
 impl CliResponse {
@@ -14,8 +21,112 @@ impl CliResponse {
             envelope: response,
             workspace_git_status: None,
             status_mode: None,
+            listing: None,
         }
     }
+
+    /// A read-only tag/snapshot listing — carries a trivial Ok envelope (no operation ran);
+    /// `render_response` renders the `listing` rather than the envelope.
+    pub(crate) fn listing(listing: ArtifactListing) -> Self {
+        Self {
+            envelope: gwz_core::ResponseEnvelope {
+                meta: gwz_core::ResponseMeta {
+                    request_id: String::new(),
+                    schema_version: String::new(),
+                    action: gwz_core::ActionKind::Status,
+                    aggregate_status: gwz_core::AggregateStatus::Ok,
+                    operation_id: None,
+                    message: None,
+                    attribution: None,
+                },
+                members: Vec::new(),
+                errors: Vec::new(),
+            },
+            workspace_git_status: None,
+            status_mode: None,
+            listing: Some(listing),
+        }
+    }
+}
+
+/// Human/porcelain text for a tag/snapshot listing.
+pub(crate) fn render_listing_text(listing: &ArtifactListing) -> String {
+    let (label, rows): (&str, Vec<(String, String, String, usize)>) = match listing {
+        ArtifactListing::Tags(tags) => (
+            "tag",
+            tags.iter()
+                .map(|t| {
+                    (
+                        t.tag.clone(),
+                        t.created_at.clone(),
+                        t.created_by.actor_id.clone(),
+                        t.members.len(),
+                    )
+                })
+                .collect(),
+        ),
+        ArtifactListing::Snapshots(snaps) => (
+            "snapshot",
+            snaps
+                .iter()
+                .map(|s| {
+                    (
+                        s.snapshot_id.clone(),
+                        s.created_at.clone(),
+                        s.created_by.actor_id.clone(),
+                        s.members.len(),
+                    )
+                })
+                .collect(),
+        ),
+    };
+    if rows.is_empty() {
+        return format!("no {label}s");
+    }
+    let plural = |n: usize| if n == 1 { "" } else { "s" };
+    let mut lines = vec![format!("{} {label}{}:", rows.len(), plural(rows.len()))];
+    for (name, created_at, actor, members) in rows {
+        lines.push(format!(
+            "  {name}\t{created_at}\t{actor}\t({members} member{})",
+            plural(members)
+        ));
+    }
+    lines.join("\n")
+}
+
+/// JSON for a tag/snapshot listing.
+pub(crate) fn listing_json(listing: &ArtifactListing) -> serde_json::Value {
+    use serde_json::json;
+    let (kind, entries): (&str, Vec<serde_json::Value>) = match listing {
+        ArtifactListing::Tags(tags) => (
+            "tags",
+            tags.iter()
+                .map(|t| {
+                    json!({
+                        "name": t.tag,
+                        "created_at": t.created_at,
+                        "created_by": t.created_by.actor_id,
+                        "members": t.members.len(),
+                    })
+                })
+                .collect(),
+        ),
+        ArtifactListing::Snapshots(snaps) => (
+            "snapshots",
+            snaps
+                .iter()
+                .map(|s| {
+                    json!({
+                        "name": s.snapshot_id,
+                        "created_at": s.created_at,
+                        "created_by": s.created_by.actor_id,
+                        "members": s.members.len(),
+                    })
+                })
+                .collect(),
+        ),
+    };
+    json!({ "kind": kind, "entries": entries })
 }
 
 /// Streams each operation event to stdout as a JSON line, flushed immediately,

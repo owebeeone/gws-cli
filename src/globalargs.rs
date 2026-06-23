@@ -366,6 +366,7 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
                     envelope: response.response,
                     workspace_git_status: response.workspace_git_status,
                     status_mode: request.mode,
+                    listing: None,
                 },
             )
         }
@@ -413,11 +414,23 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
             gwz_core::workspace_ops::handle_stage(&backend, start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
         }
+        CliRequest::ListTags => gwz_core::workspace_ops::resolve_workspace_root(start, None)
+            .and_then(|root| gwz_core::artifact::list_tags(&root))
+            .map(|tags| CliResponse::listing(ArtifactListing::Tags(tags))),
+        CliRequest::ListSnapshots => gwz_core::workspace_ops::resolve_workspace_root(start, None)
+            .and_then(|root| gwz_core::artifact::list_snapshots(&root))
+            .map(|snapshots| CliResponse::listing(ArtifactListing::Snapshots(snapshots))),
     };
     response.map_err(CliError::from_model)
 }
 
 pub(crate) fn render_response(response: &CliResponse, output: OutputMode) -> String {
+    if let Some(listing) = &response.listing {
+        return match output {
+            OutputMode::Json | OutputMode::Jsonl => listing_json(listing).to_string(),
+            OutputMode::Human | OutputMode::Porcelain => render_listing_text(listing),
+        };
+    }
     match output {
         OutputMode::Human => render_human_response(response),
         OutputMode::Json => response_json(response).to_string(),
