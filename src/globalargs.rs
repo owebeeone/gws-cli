@@ -179,6 +179,12 @@ pub(crate) enum CommandArgs {
     )]
     Clone(CloneArgs),
     #[command(
+        about = "Stage file contents across workspace repos (multi-repo git add)",
+        long_about = STAGE_LONG,
+        after_long_help = STAGE_AFTER
+    )]
+    Add(StageArgs),
+    #[command(
         about = "Manage workspace repositories (add an existing repo, or create one)",
         long_about = REPO_LONG,
         after_long_help = REPO_AFTER
@@ -286,7 +292,7 @@ pub(crate) fn invocation_from_cli(
         .root
         .clone()
         .unwrap_or_else(|| current_dir.to_string_lossy().into_owned());
-    let request = cli.command_request(meta, workspace_root)?;
+    let request = cli.command_request(meta, workspace_root, current_dir)?;
     Ok(CliInvocation {
         request,
         output,
@@ -401,6 +407,10 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
         }
         CliRequest::Commit(request) => {
             gwz_core::workspace_ops::handle_commit(&backend, start, request.clone(), operation_id)
+                .map(|response| CliResponse::envelope(response.response))
+        }
+        CliRequest::Stage(request) => {
+            gwz_core::workspace_ops::handle_stage(&backend, start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
         }
     };

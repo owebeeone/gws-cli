@@ -237,6 +237,10 @@ pub(crate) fn parses_command_matrix() {
         CliRequest::AddExistingRepo(_)
     ));
     assert!(matches!(
+        parse(strings(["add", "src/foo.rs"])).request,
+        CliRequest::Stage(_)
+    ));
+    assert!(matches!(
         parse(strings(["repo", "create", "repos/app"])).request,
         CliRequest::CreateRepo(_)
     ));

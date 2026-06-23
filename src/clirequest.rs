@@ -103,6 +103,22 @@ pub(crate) struct CommitArgs {
     pub(crate) all: bool,
 }
 
+#[derive(Clone, Debug, Args)]
+pub(crate) struct StageArgs {
+    #[arg(
+        value_name = "pathspec",
+        help = "Paths to stage; resolved relative to the current directory like `git add`"
+    )]
+    pub(crate) pathspecs: Vec<String>,
+
+    #[arg(
+        short = 'A',
+        long = "all",
+        help = "Stage all changes across every workspace repo (git add -A)"
+    )]
+    pub(crate) all: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CliInvocation {
     pub(crate) request: CliRequest,
@@ -130,6 +146,7 @@ pub(crate) enum CliRequest {
     Push(gwz_core::PushRequest),
     Capture(gwz_core::CaptureRequest),
     Commit(gwz_core::CommitRequest),
+    Stage(gwz_core::StageRequest),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -274,10 +291,12 @@ impl Cli {
         &self,
         meta: gwz_core::RequestMeta,
         workspace_root: String,
+        current_dir: &std::path::Path,
     ) -> Result<CliRequest, CliError> {
         match &self.command {
             CommandArgs::Init(args) => args.request(meta, workspace_root),
             CommandArgs::Clone(args) => args.request(meta),
+            CommandArgs::Add(args) => args.request(meta, current_dir),
             CommandArgs::Repo(args) => args.request(meta),
             CommandArgs::Status(args) => args.request(meta),
             CommandArgs::Snapshot(args) => Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest {
@@ -452,6 +471,21 @@ impl CommitArgs {
         Ok(CliRequest::Commit(gwz_core::CommitRequest {
             meta,
             message: self.message.clone(),
+            all: self.all.then_some(true),
+        }))
+    }
+}
+
+impl StageArgs {
+    pub(crate) fn request(
+        &self,
+        meta: gwz_core::RequestMeta,
+        cwd: &std::path::Path,
+    ) -> Result<CliRequest, CliError> {
+        Ok(CliRequest::Stage(gwz_core::StageRequest {
+            meta,
+            cwd: cwd.to_string_lossy().into_owned(),
+            pathspecs: self.pathspecs.clone(),
             all: self.all.then_some(true),
         }))
     }

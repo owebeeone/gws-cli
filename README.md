@@ -14,6 +14,10 @@ gwz init <url>...
 gwz clone <url> [directory]
 gwz repo add <repo-path>
 gwz repo create <member-path>
+gwz add <pathspec>...
+gwz add -A
+gwz commit -m <message>
+gwz commit -a -m <message>
 gwz status
 gwz status --no-combined
 gwz status --porcelain
