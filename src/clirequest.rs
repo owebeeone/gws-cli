@@ -147,7 +147,6 @@ pub(crate) enum CliRequest {
     Capture(gwz_core::CaptureRequest),
     Commit(gwz_core::CommitRequest),
     Stage(gwz_core::StageRequest),
-    ListTags,
     ListSnapshots,
 }
 
@@ -307,12 +306,28 @@ impl Cli {
                 }
                 _ => Ok(CliRequest::ListSnapshots),
             },
-            CommandArgs::Tag(args) => match args.name.clone() {
-                Some(name) if !args.list => {
-                    Ok(CliRequest::Tag(gwz_core::TagRequest { meta, tag_name: name }))
-                }
-                _ => Ok(CliRequest::ListTags),
-            },
+            CommandArgs::Tag(args) => {
+                let op = if args.push {
+                    gwz_core::TagOp::Push
+                } else if args.fetch {
+                    gwz_core::TagOp::Fetch
+                } else if args.delete {
+                    gwz_core::TagOp::Delete
+                } else if args.list || args.name.is_none() {
+                    gwz_core::TagOp::List
+                } else {
+                    gwz_core::TagOp::Create
+                };
+                Ok(CliRequest::Tag(gwz_core::TagRequest {
+                    meta,
+                    op,
+                    name: args.name.clone(),
+                    message: args.message.clone(),
+                    signed: args.signed.then_some(true),
+                    remote: self.global.remote.clone(),
+                    all: None,
+                }))
+            }
             CommandArgs::Materialize(args) => args.request(meta),
             CommandArgs::Pull(args) => args.request(meta),
             CommandArgs::Push => Ok(CliRequest::Push(gwz_core::PushRequest {

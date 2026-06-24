@@ -240,9 +240,35 @@ pub(crate) fn parses_command_matrix() {
         parse(strings(["add", "src/foo.rs"])).request,
         CliRequest::Stage(_)
     ));
-    assert!(matches!(parse(strings(["tag"])).request, CliRequest::ListTags));
-    assert!(matches!(parse(strings(["tag", "--list"])).request, CliRequest::ListTags));
-    assert!(matches!(parse(strings(["tag", "v1"])).request, CliRequest::Tag(_)));
+    // The verb collapses to CliRequest::Tag; the operation lives in the inner TagRequest.op.
+    assert!(matches!(
+        parse(strings(["tag"])).request,
+        CliRequest::Tag(ref r) if matches!(r.op, gwz_core::TagOp::List)
+    ));
+    assert!(matches!(
+        parse(strings(["tag", "--list"])).request,
+        CliRequest::Tag(ref r) if matches!(r.op, gwz_core::TagOp::List)
+    ));
+    assert!(matches!(
+        parse(strings(["tag", "v1"])).request,
+        CliRequest::Tag(ref r) if matches!(r.op, gwz_core::TagOp::Create)
+    ));
+    assert!(matches!(
+        parse(strings(["tag", "--delete", "v1"])).request,
+        CliRequest::Tag(ref r) if matches!(r.op, gwz_core::TagOp::Delete)
+    ));
+    assert!(matches!(
+        parse(strings(["tag", "--push"])).request,
+        CliRequest::Tag(ref r) if matches!(r.op, gwz_core::TagOp::Push)
+    ));
+    assert!(matches!(
+        parse(strings(["tag", "--fetch"])).request,
+        CliRequest::Tag(ref r) if matches!(r.op, gwz_core::TagOp::Fetch)
+    ));
+    assert!(matches!(
+        parse(strings(["tag", "--list", "--remote", "origin"])).request,
+        CliRequest::Tag(ref r) if r.remote.as_deref() == Some("origin")
+    ));
     assert!(matches!(parse(strings(["snapshot"])).request, CliRequest::ListSnapshots));
     assert!(matches!(parse(strings(["snapshot", "snap"])).request, CliRequest::Snapshot(_)));
     assert!(matches!(

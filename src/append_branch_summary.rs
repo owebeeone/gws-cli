@@ -3,7 +3,7 @@ use crate::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ArtifactListing {
-    Tags(Vec<gwz_core::artifact::TagArtifact>),
+    Tags(Vec<gwz_core::TagInfo>),
     Snapshots(Vec<gwz_core::artifact::SnapshotArtifact>),
 }
 
@@ -51,82 +51,67 @@ impl CliResponse {
 
 /// Human/porcelain text for a tag/snapshot listing.
 pub(crate) fn render_listing_text(listing: &ArtifactListing) -> String {
-    let (label, rows): (&str, Vec<(String, String, String, usize)>) = match listing {
-        ArtifactListing::Tags(tags) => (
-            "tag",
-            tags.iter()
-                .map(|t| {
-                    (
-                        t.tag.clone(),
-                        t.created_at.clone(),
-                        t.created_by.actor_id.clone(),
-                        t.members.len(),
-                    )
-                })
-                .collect(),
-        ),
-        ArtifactListing::Snapshots(snaps) => (
-            "snapshot",
-            snaps
-                .iter()
-                .map(|s| {
-                    (
-                        s.snapshot_id.clone(),
-                        s.created_at.clone(),
-                        s.created_by.actor_id.clone(),
-                        s.members.len(),
-                    )
-                })
-                .collect(),
-        ),
-    };
-    if rows.is_empty() {
-        return format!("no {label}s");
+    let plural = |count: usize| if count == 1 { "" } else { "s" };
+    match listing {
+        ArtifactListing::Tags(tags) => {
+            if tags.is_empty() {
+                return "no tags".to_owned();
+            }
+            let mut lines = vec![format!("{} tag{}:", tags.len(), plural(tags.len()))];
+            for tag in tags {
+                lines.push(format!(
+                    "  {}\t({} member{})",
+                    tag.name,
+                    tag.members,
+                    plural(tag.members as usize)
+                ));
+            }
+            lines.join("\n")
+        }
+        ArtifactListing::Snapshots(snapshots) => {
+            if snapshots.is_empty() {
+                return "no snapshots".to_owned();
+            }
+            let mut lines = vec![format!("{} snapshot{}:", snapshots.len(), plural(snapshots.len()))];
+            for snapshot in snapshots {
+                lines.push(format!(
+                    "  {}\t{}\t{}\t({} member{})",
+                    snapshot.snapshot_id,
+                    snapshot.created_at,
+                    snapshot.created_by.actor_id,
+                    snapshot.members.len(),
+                    plural(snapshot.members.len())
+                ));
+            }
+            lines.join("\n")
+        }
     }
-    let plural = |n: usize| if n == 1 { "" } else { "s" };
-    let mut lines = vec![format!("{} {label}{}:", rows.len(), plural(rows.len()))];
-    for (name, created_at, actor, members) in rows {
-        lines.push(format!(
-            "  {name}\t{created_at}\t{actor}\t({members} member{})",
-            plural(members)
-        ));
-    }
-    lines.join("\n")
 }
 
 /// JSON for a tag/snapshot listing.
 pub(crate) fn listing_json(listing: &ArtifactListing) -> serde_json::Value {
     use serde_json::json;
-    let (kind, entries): (&str, Vec<serde_json::Value>) = match listing {
-        ArtifactListing::Tags(tags) => (
-            "tags",
-            tags.iter()
-                .map(|t| {
-                    json!({
-                        "name": t.tag,
-                        "created_at": t.created_at,
-                        "created_by": t.created_by.actor_id,
-                        "members": t.members.len(),
-                    })
-                })
-                .collect(),
-        ),
-        ArtifactListing::Snapshots(snaps) => (
-            "snapshots",
-            snaps
+    match listing {
+        ArtifactListing::Tags(tags) => json!({
+            "kind": "tags",
+            "entries": tags
                 .iter()
-                .map(|s| {
-                    json!({
-                        "name": s.snapshot_id,
-                        "created_at": s.created_at,
-                        "created_by": s.created_by.actor_id,
-                        "members": s.members.len(),
-                    })
-                })
-                .collect(),
-        ),
-    };
-    json!({ "kind": kind, "entries": entries })
+                .map(|tag| json!({ "name": tag.name, "members": tag.members }))
+                .collect::<Vec<_>>(),
+        }),
+        ArtifactListing::Snapshots(snapshots) => json!({
+            "kind": "snapshots",
+            "entries": snapshots
+                .iter()
+                .map(|snapshot| json!({
+                    "name": snapshot.snapshot_id,
+                    "created_at": snapshot.created_at,
+                    "created_by": snapshot.created_by.actor_id,
+                    "members": snapshot.members.len(),
+                }))
+                .collect::<Vec<_>>(),
+        }),
+    }
 }
 
 /// Streams each operation event to stdout as a JSON line, flushed immediately,

@@ -23,6 +23,10 @@ gwz status --no-combined
 gwz status --porcelain
 gwz snapshot <name>
 gwz tag <name>
+gwz tag --list [--remote <name>]
+gwz tag --delete <name> [--remote <name>]
+gwz tag --push [<name>] [--remote <name>]
+gwz tag --fetch [--remote <name>]
 gwz materialize --lock
 gwz materialize --snapshot <name>
 gwz materialize --tag <name>

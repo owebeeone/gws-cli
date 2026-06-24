@@ -203,11 +203,11 @@ pub(crate) enum CommandArgs {
     )]
     Snapshot(NameArgs),
     #[command(
-        about = "Record a named workspace tag",
+        about = "Manage git tags across workspace repos (create/list/delete)",
         long_about = TAG_LONG,
         after_long_help = TAG_AFTER
     )]
-    Tag(NameArgs),
+    Tag(TagArgs),
     #[command(
         about = "Materialize workspace members to a target",
         long_about = MATERIALIZE_LONG,
@@ -375,8 +375,12 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
                 .map(|response| CliResponse::envelope(response.response))
         }
         CliRequest::Tag(request) => {
-            gwz_core::workspace_ops::handle_tag(&backend, start, request.clone(), operation_id)
-                .map(|response| CliResponse::envelope(response.response))
+            gwz_core::workspace_ops::handle_tag(&backend, start, request.clone(), operation_id).map(
+                |response| match response.tags {
+                    Some(tags) => CliResponse::listing(ArtifactListing::Tags(tags)),
+                    None => CliResponse::envelope(response.response),
+                },
+            )
         }
         CliRequest::PullHead(request) => gwz_core::workspace_ops::handle_pull_head_with_events(
             &backend,
@@ -414,9 +418,6 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
             gwz_core::workspace_ops::handle_stage(&backend, start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
         }
-        CliRequest::ListTags => gwz_core::workspace_ops::resolve_workspace_root(start, None)
-            .and_then(|root| gwz_core::artifact::list_tags(&root))
-            .map(|tags| CliResponse::listing(ArtifactListing::Tags(tags))),
         CliRequest::ListSnapshots => gwz_core::workspace_ops::resolve_workspace_root(start, None)
             .and_then(|root| gwz_core::artifact::list_snapshots(&root))
             .map(|snapshots| CliResponse::listing(ArtifactListing::Snapshots(snapshots))),
