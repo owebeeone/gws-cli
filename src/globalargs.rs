@@ -196,6 +196,10 @@ pub(crate) enum CommandArgs {
         after_long_help = STATUS_AFTER
     )]
     Status(StatusArgs),
+    #[command(about = "List the workspace's members (id, path; absolute or --local)")]
+    Ls(LsArgs),
+    #[command(about = "Run a command in each member: gwz forall [projects…] -- <cmd>  |  -c <string>")]
+    Forall(ForallArgs),
     #[command(
         about = "Record the current workspace selection",
         long_about = SNAPSHOT_LONG,
@@ -367,9 +371,41 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
                     workspace_git_status: response.workspace_git_status,
                     status_mode: request.mode,
                     listing: None,
+                    summary: None,
                 },
             )
         }
+        CliRequest::Ls { request, local } => {
+            gwz_core::workspace_ops::handle_ls(start, request.clone(), operation_id).map(|response| {
+                CliResponse {
+                    envelope: response.response,
+                    workspace_git_status: None,
+                    status_mode: None,
+                    listing: Some(ArtifactListing::Members {
+                        entries: response.members.unwrap_or_default(),
+                        local: *local,
+                    }),
+                    summary: None,
+                }
+            })
+        }
+        CliRequest::Forall {
+            meta,
+            projects,
+            mode,
+            command,
+            continue_on_fail,
+            no_banner,
+        } => execute_forall(
+            start,
+            meta,
+            projects,
+            *mode,
+            command,
+            *continue_on_fail,
+            *no_banner,
+            operation_id,
+        ),
         CliRequest::Snapshot(request) => {
             gwz_core::workspace_ops::handle_snapshot(&backend, start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
@@ -426,6 +462,10 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
 }
 
 pub(crate) fn render_response(response: &CliResponse, output: OutputMode) -> String {
+    // forall already streamed member output live; render only its trailing summary.
+    if let Some(summary) = &response.summary {
+        return summary.clone();
+    }
     if let Some(listing) = &response.listing {
         return match output {
             OutputMode::Json | OutputMode::Jsonl => listing_json(listing).to_string(),

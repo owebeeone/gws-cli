@@ -5,6 +5,10 @@ use crate::*;
 pub(crate) enum ArtifactListing {
     Tags(Vec<gwz_core::TagInfo>),
     Snapshots(Vec<gwz_core::artifact::SnapshotArtifact>),
+    Members {
+        entries: Vec<gwz_core::MemberEntry>,
+        local: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -13,6 +17,8 @@ pub(crate) struct CliResponse {
     pub(crate) workspace_git_status: Option<gwz_core::WorkspaceGitStatus>,
     pub(crate) status_mode: Option<gwz_core::StatusMode>,
     pub(crate) listing: Option<ArtifactListing>,
+    /// forall's trailing summary — rendered verbatim (it already streamed member output live).
+    pub(crate) summary: Option<String>,
 }
 
 impl CliResponse {
@@ -22,6 +28,7 @@ impl CliResponse {
             workspace_git_status: None,
             status_mode: None,
             listing: None,
+            summary: None,
         }
     }
 
@@ -45,6 +52,7 @@ impl CliResponse {
             workspace_git_status: None,
             status_mode: None,
             listing: Some(listing),
+            summary: None,
         }
     }
 }
@@ -85,6 +93,18 @@ pub(crate) fn render_listing_text(listing: &ArtifactListing) -> String {
             }
             lines.join("\n")
         }
+        // Members render as raw paths, one per line (no header) — for `for i in $(gwz ls)`.
+        ArtifactListing::Members { entries, local } => entries
+            .iter()
+            .map(|member| {
+                if *local {
+                    member.path.clone()
+                } else {
+                    member.abspath.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
     }
 }
 
@@ -108,6 +128,18 @@ pub(crate) fn listing_json(listing: &ArtifactListing) -> serde_json::Value {
                     "created_at": snapshot.created_at,
                     "created_by": snapshot.created_by.actor_id,
                     "members": snapshot.members.len(),
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        ArtifactListing::Members { entries, .. } => json!({
+            "kind": "members",
+            "entries": entries
+                .iter()
+                .map(|member| json!({
+                    "id": member.id,
+                    "path": member.path,
+                    "abspath": member.abspath,
+                    "materialized": member.materialized,
                 }))
                 .collect::<Vec<_>>(),
         }),

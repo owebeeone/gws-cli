@@ -272,6 +272,27 @@ pub(crate) fn parses_command_matrix() {
     assert!(matches!(parse(strings(["snapshot"])).request, CliRequest::ListSnapshots));
     assert!(matches!(parse(strings(["snapshot", "snap"])).request, CliRequest::Snapshot(_)));
     assert!(matches!(
+        parse(strings(["ls"])).request,
+        CliRequest::Ls { local: false, ref request } if request.include_unmaterialized.is_none()
+    ));
+    assert!(matches!(parse(strings(["ls", "--local"])).request, CliRequest::Ls { local: true, .. }));
+    assert!(matches!(
+        parse(strings(["ls", "--unmaterialized"])).request,
+        CliRequest::Ls { ref request, .. } if request.include_unmaterialized == Some(true)
+    ));
+    assert!(matches!(
+        parse(strings(["forall", "--", "git", "status"])).request,
+        CliRequest::Forall { mode: gwz_core::ExecMode::Argv, ref command, .. } if command.len() == 2
+    ));
+    assert!(matches!(
+        parse(strings(["forall", "-c", "git status"])).request,
+        CliRequest::Forall { mode: gwz_core::ExecMode::Shell, .. }
+    ));
+    assert!(matches!(
+        parse(strings(["forall", "app", "lib", "--", "git"])).request,
+        CliRequest::Forall { ref projects, .. } if projects.len() == 2
+    ));
+    assert!(matches!(
         parse(strings(["repo", "create", "repos/app"])).request,
         CliRequest::CreateRepo(_)
     ));
@@ -315,6 +336,11 @@ pub(crate) fn rejects_invalid_command_combinations_before_core_execution() {
     assert!(parse_result(strings(["status", "--porcelain", "--no-combined"])).is_err());
     assert!(parse_result(strings(["status", "--no-combined", "--no-files"])).is_err());
     assert!(parse_result(strings(["push", "--combined"])).is_err());
+    // forall: no command, both -c and --, and --json/--jsonl are all rejected at parse.
+    assert!(parse_result(strings(["forall"])).is_err());
+    assert!(parse_result(strings(["forall", "-c", "x", "--", "y"])).is_err());
+    assert!(parse_result(strings(["--json", "forall", "--", "echo"])).is_err());
+    assert!(parse_result(strings(["--jsonl", "forall", "--", "echo"])).is_err());
     assert!(parse_result(strings(["push", "--no-combined"])).is_err());
     assert!(parse_result(strings(["materialize", "--snapshot"])).is_err());
     assert!(parse_result(strings(["pull", "--lock"])).is_err());

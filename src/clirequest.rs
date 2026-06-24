@@ -139,6 +139,18 @@ pub(crate) enum CliRequest {
     CreateRepo(gwz_core::CreateRepoRequest),
     Materialize(gwz_core::MaterializeRequest),
     Status(gwz_core::StatusRequest),
+    Ls {
+        request: gwz_core::LsRequest,
+        local: bool,
+    },
+    Forall {
+        meta: gwz_core::RequestMeta,
+        projects: Vec<String>,
+        mode: gwz_core::ExecMode,
+        command: Vec<String>,
+        continue_on_fail: bool,
+        no_banner: bool,
+    },
     Snapshot(gwz_core::SnapshotRequest),
     Tag(gwz_core::TagRequest),
     PullHead(gwz_core::PullHeadRequest),
@@ -300,6 +312,30 @@ impl Cli {
             CommandArgs::Add(args) => args.request(meta, current_dir),
             CommandArgs::Repo(args) => args.request(meta),
             CommandArgs::Status(args) => args.request(meta),
+            CommandArgs::Ls(args) => args.request(meta),
+            CommandArgs::Forall(args) => {
+                if self.global.json || self.global.jsonl {
+                    return Err(CliError::new("forall does not support --json/--jsonl"));
+                }
+                let (mode, command) = match (&args.command_string, args.command.is_empty()) {
+                    (Some(script), true) => (gwz_core::ExecMode::Shell, vec![script.clone()]),
+                    (None, false) => (gwz_core::ExecMode::Argv, args.command.clone()),
+                    (Some(_), false) => {
+                        return Err(CliError::new("use either `-c <string>` or `-- <cmd>`, not both"));
+                    }
+                    (None, true) => {
+                        return Err(CliError::new("no command (use `-- <cmd>` or `-c <string>`)"));
+                    }
+                };
+                Ok(CliRequest::Forall {
+                    meta,
+                    projects: args.projects.clone(),
+                    mode,
+                    command,
+                    continue_on_fail: self.global.partial,
+                    no_banner: args.no_banner,
+                })
+            }
             CommandArgs::Snapshot(args) => match args.name.clone() {
                 Some(name) if !args.list => {
                     Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest { meta, snapshot_id: name }))
@@ -494,6 +530,18 @@ impl CommitArgs {
             message: self.message.clone(),
             all: self.all.then_some(true),
         }))
+    }
+}
+
+impl LsArgs {
+    pub(crate) fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        Ok(CliRequest::Ls {
+            request: gwz_core::LsRequest {
+                meta,
+                include_unmaterialized: self.unmaterialized.then_some(true),
+            },
+            local: self.local,
+        })
     }
 }
 
