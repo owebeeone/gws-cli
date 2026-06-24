@@ -1,6 +1,6 @@
 [package]
 name = "gwz"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license = "GPL-2.0-only"
 rust-version = "1.95"
@@ -17,7 +17,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive", "wrap_help"] }
 console = "0.16"
-gwz-core = { git = "https://github.com/owebeeone/gwz-core", tag = "v0.2.0" }
+gwz-core = { git = "https://github.com/owebeeone/gwz-core", tag = "v0.3.0" }
 serde_json = "1"
 
 [dev-dependencies]

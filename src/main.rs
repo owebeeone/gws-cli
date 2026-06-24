@@ -16,7 +16,9 @@ mod impl_from_syncarg_for_gwz_core_syncbehavior;
 mod init_after;
 mod init_long;
 mod materialize_after;
+mod forall;
 mod materialize_long;
+mod lsargs;
 mod nameargs;
 mod parse_non_negative_i64;
 mod parse_positive_i64;
@@ -32,6 +34,8 @@ mod repo_long;
 mod response_meta_json;
 mod snapshot_after;
 mod snapshot_long;
+mod stage_after;
+mod stage_long;
 mod status_after;
 mod status_long;
 mod statusargs;
@@ -56,7 +60,9 @@ pub(crate) use globalargs::*;
 pub(crate) use init_after::*;
 pub(crate) use init_long::*;
 pub(crate) use materialize_after::*;
+pub(crate) use forall::*;
 pub(crate) use materialize_long::*;
+pub(crate) use lsargs::*;
 pub(crate) use nameargs::*;
 pub(crate) use parse_non_negative_i64::*;
 pub(crate) use parse_positive_i64::*;
@@ -72,6 +78,8 @@ pub(crate) use repo_long::*;
 pub(crate) use response_meta_json::*;
 pub(crate) use snapshot_after::*;
 pub(crate) use snapshot_long::*;
+pub(crate) use stage_after::*;
+pub(crate) use stage_long::*;
 pub(crate) use status_after::*;
 pub(crate) use status_long::*;
 pub(crate) use statusargs::*;
@@ -98,7 +106,10 @@ fn main() {
     match invocation_from_cli(cli, &new_request_id(), &cwd) {
         Ok(invocation) => match execute_invocation(&invocation) {
             Ok(response) => {
-                println!("{}", render_response(&response, invocation.output));
+                let rendered = render_response(&response, invocation.output);
+                if !rendered.is_empty() {
+                    println!("{rendered}");
+                }
                 std::process::exit(exit_code_for_response(&response.envelope));
             }
             Err(error) => {

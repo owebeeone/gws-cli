@@ -68,6 +68,7 @@ fn every_command_help_has_semantics_and_examples() {
     let temp = TempDir::new("all-help");
     for command in [
         &["init"][..],
+        &["add"][..],
         &["repo"][..],
         &["repo", "add"][..],
         &["repo", "create"][..],
@@ -796,6 +797,36 @@ fn commit_workspace_root(root: &Path) {
         &[],
     )
     .unwrap();
+}
+
+#[test]
+fn add_stages_into_owning_member_and_root() {
+    let temp = TempDir::new("cli-add");
+    assert_success(
+        &gwz(temp.path())
+            .args(["--root", temp.path_str(), "init"])
+            .output()
+            .unwrap(),
+    );
+    assert_success(
+        &gwz(temp.path())
+            .args(["--root", temp.path_str(), "repo", "create", "lib"])
+            .output()
+            .unwrap(),
+    );
+    std::fs::write(temp.path().join("lib/x.rs"), "fn x() {}\n").unwrap();
+    std::fs::write(temp.path().join("top.txt"), "t\n").unwrap();
+
+    // gwz() sets cwd to the workspace, so pathspecs resolve like `git add`.
+    assert_success(&gwz(temp.path()).args(["add", "lib/x.rs", "top.txt"]).output().unwrap());
+
+    assert!(index_has_new(&temp.path().join("lib"), "x.rs"), "x.rs staged in the member");
+    assert!(index_has_new(temp.path(), "top.txt"), "top.txt staged in the root");
+}
+
+fn index_has_new(repo: &Path, path: &str) -> bool {
+    let repo = git2::Repository::open(repo).unwrap();
+    repo.index().unwrap().get_path(Path::new(path), 0).is_some()
 }
 
 fn gwz(cwd: &Path) -> Command {

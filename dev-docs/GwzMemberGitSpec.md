@@ -167,6 +167,11 @@ Add `CommitRequest` / `CommitResponse` to taut (`ActionKind::commit`) with
 
 ## `gwz run`
 
+> **Superseded (2026-06-24):** replaced by **`gwz forall`** — see
+> `gwz-core/dev-docs/GWZForallPlan.md`. Net deltas: the verb is `forall`; the executor is
+> **CLI-only** (no in-core `GitCliRunner`); v0 is **sequential** (`--jobs`/parallel deferred);
+> `--partial` still means continue, default stops at the first failure. The text below is historical.
+
 Controlled escape hatch — west `forall` / vcstool `custom`. Runs an arbitrary
 command in each selected member directory.
 

@@ -12,13 +12,21 @@ gwz init
 gwz init --path <path-prefix> <url>...
 gwz init <url>...
 gwz clone <url> [directory]
-gwz add <repo-path>
+gwz repo add <repo-path>
 gwz repo create <member-path>
+gwz add <pathspec>...
+gwz add -A
+gwz commit -m <message>
+gwz commit -a -m <message>
 gwz status
 gwz status --no-combined
 gwz status --porcelain
 gwz snapshot <name>
 gwz tag <name>
+gwz tag --list [--remote <name>]
+gwz tag --delete <name> [--remote <name>]
+gwz tag --push [<name>] [--remote <name>]
+gwz tag --fetch [--remote <name>]
 gwz materialize --lock
 gwz materialize --snapshot <name>
 gwz materialize --tag <name>

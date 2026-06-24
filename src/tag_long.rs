@@ -1,8 +1,14 @@
 
 pub(crate) const TAG_LONG: &str = "\
-Record a named GWZ workspace tag.
+Manage real git tags across the workspace's member repositories — the multi-repo
+`git tag`, fanned out the way `gwz commit` fans out `git commit`.
 
-A GWZ tag is workspace metadata, not a git tag inside each member repository.
-It stores the workspace-level mapping from member to revision, so the same tag
-name can be meaningful inside this workspace without colliding with tags in
-other workspaces or child repositories.";
+Local operations (create, list, delete) span the selected members plus the workspace
+root; remote operations (push, fetch, and list/delete against a --remote) span the
+members only.
+
+  create   gwz tag <name> [-m <message>] [-s]   lightweight / annotated / signed
+  list     gwz tag                              local (or --list [--remote <name>])
+  delete   gwz tag --delete <name> [--remote <name>]
+  push     gwz tag --push [<name>] [--remote <name>]   one tag, or every tag
+  fetch    gwz tag --fetch [--remote <name>]";

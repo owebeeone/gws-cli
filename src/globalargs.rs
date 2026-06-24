@@ -179,6 +179,12 @@ pub(crate) enum CommandArgs {
     )]
     Clone(CloneArgs),
     #[command(
+        about = "Stage file contents across workspace repos (multi-repo git add)",
+        long_about = STAGE_LONG,
+        after_long_help = STAGE_AFTER
+    )]
+    Add(StageArgs),
+    #[command(
         about = "Manage workspace repositories (add an existing repo, or create one)",
         long_about = REPO_LONG,
         after_long_help = REPO_AFTER
@@ -190,6 +196,10 @@ pub(crate) enum CommandArgs {
         after_long_help = STATUS_AFTER
     )]
     Status(StatusArgs),
+    #[command(about = "List the workspace's members (id, path; absolute or --local)")]
+    Ls(LsArgs),
+    #[command(about = "Run a command in each member: gwz forall [projects…] -- <cmd>  |  -c <string>")]
+    Forall(ForallArgs),
     #[command(
         about = "Record the current workspace selection",
         long_about = SNAPSHOT_LONG,
@@ -197,11 +207,11 @@ pub(crate) enum CommandArgs {
     )]
     Snapshot(NameArgs),
     #[command(
-        about = "Record a named workspace tag",
+        about = "Manage git tags across workspace repos (create/list/delete)",
         long_about = TAG_LONG,
         after_long_help = TAG_AFTER
     )]
-    Tag(NameArgs),
+    Tag(TagArgs),
     #[command(
         about = "Materialize workspace members to a target",
         long_about = MATERIALIZE_LONG,
@@ -286,7 +296,7 @@ pub(crate) fn invocation_from_cli(
         .root
         .clone()
         .unwrap_or_else(|| current_dir.to_string_lossy().into_owned());
-    let request = cli.command_request(meta, workspace_root)?;
+    let request = cli.command_request(meta, workspace_root, current_dir)?;
     Ok(CliInvocation {
         request,
         output,
@@ -360,16 +370,53 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
                     envelope: response.response,
                     workspace_git_status: response.workspace_git_status,
                     status_mode: request.mode,
+                    listing: None,
+                    summary: None,
                 },
             )
         }
+        CliRequest::Ls { request, local } => {
+            gwz_core::workspace_ops::handle_ls(start, request.clone(), operation_id).map(|response| {
+                CliResponse {
+                    envelope: response.response,
+                    workspace_git_status: None,
+                    status_mode: None,
+                    listing: Some(ArtifactListing::Members {
+                        entries: response.members.unwrap_or_default(),
+                        local: *local,
+                    }),
+                    summary: None,
+                }
+            })
+        }
+        CliRequest::Forall {
+            meta,
+            projects,
+            mode,
+            command,
+            continue_on_fail,
+            no_banner,
+        } => execute_forall(
+            start,
+            meta,
+            projects,
+            *mode,
+            command,
+            *continue_on_fail,
+            *no_banner,
+            operation_id,
+        ),
         CliRequest::Snapshot(request) => {
             gwz_core::workspace_ops::handle_snapshot(&backend, start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
         }
         CliRequest::Tag(request) => {
-            gwz_core::workspace_ops::handle_tag(&backend, start, request.clone(), operation_id)
-                .map(|response| CliResponse::envelope(response.response))
+            gwz_core::workspace_ops::handle_tag(&backend, start, request.clone(), operation_id).map(
+                |response| match response.tags {
+                    Some(tags) => CliResponse::listing(ArtifactListing::Tags(tags)),
+                    None => CliResponse::envelope(response.response),
+                },
+            )
         }
         CliRequest::PullHead(request) => gwz_core::workspace_ops::handle_pull_head_with_events(
             &backend,
@@ -403,11 +450,28 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
             gwz_core::workspace_ops::handle_commit(&backend, start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
         }
+        CliRequest::Stage(request) => {
+            gwz_core::workspace_ops::handle_stage(&backend, start, request.clone(), operation_id)
+                .map(|response| CliResponse::envelope(response.response))
+        }
+        CliRequest::ListSnapshots => gwz_core::workspace_ops::resolve_workspace_root(start, None)
+            .and_then(|root| gwz_core::artifact::list_snapshots(&root))
+            .map(|snapshots| CliResponse::listing(ArtifactListing::Snapshots(snapshots))),
     };
     response.map_err(CliError::from_model)
 }
 
 pub(crate) fn render_response(response: &CliResponse, output: OutputMode) -> String {
+    // forall already streamed member output live; render only its trailing summary.
+    if let Some(summary) = &response.summary {
+        return summary.clone();
+    }
+    if let Some(listing) = &response.listing {
+        return match output {
+            OutputMode::Json | OutputMode::Jsonl => listing_json(listing).to_string(),
+            OutputMode::Human | OutputMode::Porcelain => render_listing_text(listing),
+        };
+    }
     match output {
         OutputMode::Human => render_human_response(response),
         OutputMode::Json => response_json(response).to_string(),

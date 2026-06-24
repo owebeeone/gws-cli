@@ -2,10 +2,23 @@
 use crate::*;
 
 #[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ArtifactListing {
+    Tags(Vec<gwz_core::TagInfo>),
+    Snapshots(Vec<gwz_core::artifact::SnapshotArtifact>),
+    Members {
+        entries: Vec<gwz_core::MemberEntry>,
+        local: bool,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CliResponse {
     pub(crate) envelope: gwz_core::ResponseEnvelope,
     pub(crate) workspace_git_status: Option<gwz_core::WorkspaceGitStatus>,
     pub(crate) status_mode: Option<gwz_core::StatusMode>,
+    pub(crate) listing: Option<ArtifactListing>,
+    /// forall's trailing summary — rendered verbatim (it already streamed member output live).
+    pub(crate) summary: Option<String>,
 }
 
 impl CliResponse {
@@ -14,7 +27,122 @@ impl CliResponse {
             envelope: response,
             workspace_git_status: None,
             status_mode: None,
+            listing: None,
+            summary: None,
         }
+    }
+
+    /// A read-only tag/snapshot listing — carries a trivial Ok envelope (no operation ran);
+    /// `render_response` renders the `listing` rather than the envelope.
+    pub(crate) fn listing(listing: ArtifactListing) -> Self {
+        Self {
+            envelope: gwz_core::ResponseEnvelope {
+                meta: gwz_core::ResponseMeta {
+                    request_id: String::new(),
+                    schema_version: String::new(),
+                    action: gwz_core::ActionKind::Status,
+                    aggregate_status: gwz_core::AggregateStatus::Ok,
+                    operation_id: None,
+                    message: None,
+                    attribution: None,
+                },
+                members: Vec::new(),
+                errors: Vec::new(),
+            },
+            workspace_git_status: None,
+            status_mode: None,
+            listing: Some(listing),
+            summary: None,
+        }
+    }
+}
+
+/// Human/porcelain text for a tag/snapshot listing.
+pub(crate) fn render_listing_text(listing: &ArtifactListing) -> String {
+    let plural = |count: usize| if count == 1 { "" } else { "s" };
+    match listing {
+        ArtifactListing::Tags(tags) => {
+            if tags.is_empty() {
+                return "no tags".to_owned();
+            }
+            let mut lines = vec![format!("{} tag{}:", tags.len(), plural(tags.len()))];
+            for tag in tags {
+                lines.push(format!(
+                    "  {}\t({} member{})",
+                    tag.name,
+                    tag.members,
+                    plural(tag.members as usize)
+                ));
+            }
+            lines.join("\n")
+        }
+        ArtifactListing::Snapshots(snapshots) => {
+            if snapshots.is_empty() {
+                return "no snapshots".to_owned();
+            }
+            let mut lines = vec![format!("{} snapshot{}:", snapshots.len(), plural(snapshots.len()))];
+            for snapshot in snapshots {
+                lines.push(format!(
+                    "  {}\t{}\t{}\t({} member{})",
+                    snapshot.snapshot_id,
+                    snapshot.created_at,
+                    snapshot.created_by.actor_id,
+                    snapshot.members.len(),
+                    plural(snapshot.members.len())
+                ));
+            }
+            lines.join("\n")
+        }
+        // Members render as raw paths, one per line (no header) — for `for i in $(gwz ls)`.
+        ArtifactListing::Members { entries, local } => entries
+            .iter()
+            .map(|member| {
+                if *local {
+                    member.path.clone()
+                } else {
+                    member.abspath.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    }
+}
+
+/// JSON for a tag/snapshot listing.
+pub(crate) fn listing_json(listing: &ArtifactListing) -> serde_json::Value {
+    use serde_json::json;
+    match listing {
+        ArtifactListing::Tags(tags) => json!({
+            "kind": "tags",
+            "entries": tags
+                .iter()
+                .map(|tag| json!({ "name": tag.name, "members": tag.members }))
+                .collect::<Vec<_>>(),
+        }),
+        ArtifactListing::Snapshots(snapshots) => json!({
+            "kind": "snapshots",
+            "entries": snapshots
+                .iter()
+                .map(|snapshot| json!({
+                    "name": snapshot.snapshot_id,
+                    "created_at": snapshot.created_at,
+                    "created_by": snapshot.created_by.actor_id,
+                    "members": snapshot.members.len(),
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        ArtifactListing::Members { entries, .. } => json!({
+            "kind": "members",
+            "entries": entries
+                .iter()
+                .map(|member| json!({
+                    "id": member.id,
+                    "path": member.path,
+                    "abspath": member.abspath,
+                    "materialized": member.materialized,
+                }))
+                .collect::<Vec<_>>(),
+        }),
     }
 }
 
