@@ -198,20 +198,34 @@ pub(crate) enum CommandArgs {
     Status(StatusArgs),
     #[command(about = "List the workspace's members (id, path; absolute or --local)")]
     Ls(LsArgs),
-    #[command(about = "Run a command in each member: gwz forall [projects…] -- <cmd>  |  -c <string>")]
+    #[command(
+        about = "Run a command in each member: gwz forall [projects…] -- <cmd>  |  -c <string>"
+    )]
     Forall(ForallArgs),
     #[command(
         about = "Record the current workspace selection",
         long_about = SNAPSHOT_LONG,
         after_long_help = SNAPSHOT_AFTER
     )]
-    Snapshot(NameArgs),
+    Snapshot(SnapshotArgs),
     #[command(
         about = "Manage git tags across workspace repos (create/list/delete)",
         long_about = TAG_LONG,
         after_long_help = TAG_AFTER
     )]
     Tag(TagArgs),
+    #[command(
+        about = "Manage git branches across workspace members",
+        long_about = BRANCH_LONG,
+        after_long_help = BRANCH_AFTER
+    )]
+    Branch(BranchArgs),
+    #[command(
+        about = "Manage coordinated git stashes across workspace members",
+        long_about = STASH_LONG,
+        after_long_help = STASH_AFTER
+    )]
+    Stash(StashArgs),
     #[command(
         about = "Materialize workspace members to a target",
         long_about = MATERIALIZE_LONG,
@@ -259,6 +273,104 @@ pub(crate) struct InitArgs {
 pub(crate) struct RepoArgs {
     #[command(subcommand)]
     pub(crate) command: RepoCommandArgs,
+}
+
+#[derive(Clone, Debug, Default, Args)]
+pub(crate) struct BranchArgs {
+    #[arg(
+        long,
+        help = "List branches across selected workspace members",
+        long_help = "List branches across selected workspace members. This is the default branch operation."
+    )]
+    pub(crate) list: bool,
+
+    #[arg(
+        long,
+        value_name = "name",
+        help = "Create a branch across selected workspace members"
+    )]
+    pub(crate) create: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "ref",
+        help = "Start point for --create (default HEAD)"
+    )]
+    pub(crate) from: Option<String>,
+
+    #[arg(long, help = "Switch selected members to the branch after --create")]
+    pub(crate) switch: bool,
+
+    #[arg(
+        long,
+        value_name = "name",
+        help = "Delete a branch across selected workspace members"
+    )]
+    pub(crate) delete: Option<String>,
+
+    #[arg(
+        long,
+        value_name = "ref",
+        help = "Merge a source ref into each selected member's current branch"
+    )]
+    pub(crate) merge: Option<String>,
+}
+
+#[derive(Clone, Debug, Args)]
+pub(crate) struct StashArgs {
+    #[command(subcommand)]
+    pub(crate) command: StashCommandArgs,
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub(crate) enum StashCommandArgs {
+    #[command(about = "Push a coordinated stash across selected workspace members")]
+    Push(StashPushArgs),
+    #[command(about = "List coordinated stashes")]
+    List(StashListArgs),
+    #[command(about = "Apply a coordinated stash")]
+    Apply(StashTargetArgs),
+    #[command(about = "Pop a coordinated stash")]
+    Pop(StashTargetArgs),
+    #[command(about = "Drop a coordinated stash")]
+    Drop(StashRequiredTargetArgs),
+}
+
+#[derive(Clone, Debug, Default, Args)]
+pub(crate) struct StashPushArgs {
+    #[arg(short = 'u', help = "Include untracked files")]
+    pub(crate) include_untracked: bool,
+
+    #[arg(
+        short = 'a',
+        help = "Include ignored files; the core handler also includes untracked files"
+    )]
+    pub(crate) include_ignored: bool,
+
+    #[arg(
+        short = 'm',
+        value_name = "message",
+        help = "Message suffix for the stash"
+    )]
+    pub(crate) message: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Args)]
+pub(crate) struct StashListArgs {
+    #[arg(long, help = "Include expanded per-member bundle detail")]
+    pub(crate) expanded: bool,
+}
+
+#[derive(Clone, Debug, Default, Args)]
+pub(crate) struct StashTargetArgs {
+    #[arg(value_name = "stash-id", help = "Stash id; defaults to latest")]
+    pub(crate) stash_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Args)]
+pub(crate) struct StashRequiredTargetArgs {
+    #[arg(value_name = "stash-id", help = "Stash id")]
+    pub(crate) stash_id: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -378,13 +490,15 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
                     workspace_git_status: response.workspace_git_status,
                     status_mode: request.mode,
                     listing: None,
+                    branch_repos: None,
+                    stash_bundles: None,
                     summary: None,
                 },
             )
         }
         CliRequest::Ls { request, local } => {
-            gwz_core::workspace_ops::handle_ls(start, request.clone(), operation_id).map(|response| {
-                CliResponse {
+            gwz_core::workspace_ops::handle_ls(start, request.clone(), operation_id).map(
+                |response| CliResponse {
                     envelope: response.response,
                     workspace_git_status: None,
                     status_mode: None,
@@ -392,9 +506,11 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
                         entries: response.members.unwrap_or_default(),
                         local: *local,
                     }),
+                    branch_repos: None,
+                    stash_bundles: None,
                     summary: None,
-                }
-            })
+                },
+            )
         }
         CliRequest::Forall {
             meta,
@@ -424,6 +540,14 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
                     None => CliResponse::envelope(response.response),
                 },
             )
+        }
+        CliRequest::Branch(request) => {
+            gwz_core::workspace_ops::handle_branch(&backend, start, request.clone(), operation_id)
+                .map(CliResponse::branch)
+        }
+        CliRequest::Stash(request) => {
+            gwz_core::workspace_ops::handle_stash(&backend, start, request.clone(), operation_id)
+                .map(CliResponse::stash)
         }
         CliRequest::PullHead(request) => gwz_core::workspace_ops::handle_pull_head_with_events(
             &backend,

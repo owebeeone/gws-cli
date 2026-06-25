@@ -2,11 +2,35 @@ use clap::Args;
 
 #[derive(Clone, Debug, Args)]
 pub(crate) struct NameArgs {
-    #[arg(value_name = "name", help = "Workspace-level name to record (omit to list existing)")]
+    #[arg(
+        value_name = "name",
+        help = "Workspace-level name to record (omit to list existing)"
+    )]
     pub(crate) name: Option<String>,
 
     #[arg(long, help = "List existing entries instead of recording one")]
     pub(crate) list: bool,
+}
+
+#[derive(Clone, Debug, Args)]
+pub(crate) struct SnapshotArgs {
+    #[arg(
+        value_name = "name",
+        help = "Snapshot name to record (omit to list existing snapshots)"
+    )]
+    pub(crate) name: Option<String>,
+
+    #[arg(long, help = "List existing snapshots instead of recording one")]
+    pub(crate) list: bool,
+
+    #[arg(
+        long,
+        value_name = "name",
+        num_args = 0..=1,
+        help = "Snapshot branch heads instead of observed worktree heads",
+        long_help = "Snapshot branch heads instead of observed worktree heads. Use bare `--branch` for the current attached branch, or `--branch <name>` for a named branch."
+    )]
+    pub(crate) branch: Option<Option<String>>,
 }
 
 #[derive(Clone, Debug, clap::Args)]
@@ -25,7 +49,10 @@ pub(crate) struct TagArgs {
     #[arg(long, help = "Delete the named tag")]
     pub(crate) delete: bool,
 
-    #[arg(long, help = "Push tags to a remote (a named tag, or all gwz tags if no name)")]
+    #[arg(
+        long,
+        help = "Push tags to a remote (a named tag, or all gwz tags if no name)"
+    )]
     pub(crate) push: bool,
 
     #[arg(long, help = "Fetch gwz tags from a remote")]

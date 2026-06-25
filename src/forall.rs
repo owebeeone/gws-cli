@@ -93,6 +93,8 @@ pub(crate) fn execute_forall(
         workspace_git_status: None,
         status_mode: None,
         listing: None,
+        branch_repos: None,
+        stash_bundles: None,
         summary: Some(summary),
     })
 }

@@ -85,6 +85,13 @@ pub(crate) struct MaterializeArgs {
 
     #[arg(long, value_name = "name", help = "Materialize a workspace tag")]
     pub(crate) tag: Option<String>,
+
+    #[arg(
+        long = "switch",
+        value_name = "branch",
+        help = "Switch workspace members to a branch"
+    )]
+    pub(crate) switch: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Args)]
@@ -169,6 +176,8 @@ pub(crate) enum CliRequest {
     },
     Snapshot(gwz_core::SnapshotRequest),
     Tag(gwz_core::TagRequest),
+    Branch(gwz_core::BranchRequest),
+    Stash(gwz_core::StashRequest),
     PullHead(gwz_core::PullHeadRequest),
     PullSnapshot(gwz_core::PullSnapshotRequest),
     Push(gwz_core::PushRequest),
@@ -337,10 +346,14 @@ impl Cli {
                     (Some(script), true) => (gwz_core::ExecMode::Shell, vec![script.clone()]),
                     (None, false) => (gwz_core::ExecMode::Argv, args.command.clone()),
                     (Some(_), false) => {
-                        return Err(CliError::new("use either `-c <string>` or `-- <cmd>`, not both"));
+                        return Err(CliError::new(
+                            "use either `-c <string>` or `-- <cmd>`, not both",
+                        ));
                     }
                     (None, true) => {
-                        return Err(CliError::new("no command (use `-- <cmd>` or `-c <string>`)"));
+                        return Err(CliError::new(
+                            "no command (use `-- <cmd>` or `-c <string>`)",
+                        ));
                     }
                 };
                 Ok(CliRequest::Forall {
@@ -353,9 +366,14 @@ impl Cli {
                 })
             }
             CommandArgs::Snapshot(args) => match args.name.clone() {
-                Some(name) if !args.list => {
-                    Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest { meta, snapshot_id: name }))
-                }
+                Some(name) if !args.list => Ok(CliRequest::Snapshot(gwz_core::SnapshotRequest {
+                    meta,
+                    snapshot_id: name,
+                    source: args.source(),
+                })),
+                _ if args.branch.is_some() => Err(CliError::new(
+                    "--branch requires a snapshot name and cannot be combined with --list",
+                )),
                 _ => Ok(CliRequest::ListSnapshots),
             },
             CommandArgs::Tag(args) => {
@@ -380,6 +398,8 @@ impl Cli {
                     all: None,
                 }))
             }
+            CommandArgs::Branch(args) => args.request(meta),
+            CommandArgs::Stash(args) => args.request(meta),
             CommandArgs::Materialize(args) => args.request(meta),
             CommandArgs::Pull(args) => args.request(meta),
             CommandArgs::Push => Ok(CliRequest::Push(gwz_core::PushRequest {
@@ -500,6 +520,100 @@ impl RepoSyncArgs {
     }
 }
 
+impl BranchArgs {
+    pub(crate) fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        let operations = usize::from(self.list)
+            + usize::from(self.create.is_some())
+            + usize::from(self.delete.is_some())
+            + usize::from(self.merge.is_some());
+        if operations > 1 {
+            return Err(CliError::new(
+                "branch accepts only one of --list, --create, --delete, or --merge",
+            ));
+        }
+        if self.switch && self.create.is_none() {
+            return Err(CliError::new("--switch requires --create"));
+        }
+        if self.from.is_some() && self.create.is_none() {
+            return Err(CliError::new("--from requires --create"));
+        }
+
+        let op = if self.create.is_some() {
+            gwz_core::BranchOp::Create
+        } else if self.delete.is_some() {
+            gwz_core::BranchOp::Delete
+        } else if self.merge.is_some() {
+            gwz_core::BranchOp::Merge
+        } else {
+            gwz_core::BranchOp::List
+        };
+
+        Ok(CliRequest::Branch(gwz_core::BranchRequest {
+            meta,
+            op,
+            name: self.create.clone().or_else(|| self.delete.clone()),
+            start_ref: if self.create.is_some() {
+                Some(self.from.clone().unwrap_or_else(|| "HEAD".to_owned()))
+            } else if self.merge.is_some() {
+                self.merge.clone()
+            } else {
+                None
+            },
+            switch_after_create: self.switch.then_some(true),
+        }))
+    }
+}
+
+impl StashArgs {
+    pub(crate) fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        match &self.command {
+            StashCommandArgs::Push(args) => args.request(meta),
+            StashCommandArgs::List(args) => Ok(CliRequest::Stash(gwz_core::StashRequest {
+                meta,
+                op: gwz_core::StashOp::List,
+                expanded: args.expanded.then_some(true),
+                ..Default::default()
+            })),
+            StashCommandArgs::Apply(args) => Ok(CliRequest::Stash(gwz_core::StashRequest {
+                meta,
+                op: gwz_core::StashOp::Apply,
+                stash_id: args.stash_id.clone(),
+                ..Default::default()
+            })),
+            StashCommandArgs::Pop(args) => Ok(CliRequest::Stash(gwz_core::StashRequest {
+                meta,
+                op: gwz_core::StashOp::Pop,
+                stash_id: args.stash_id.clone(),
+                ..Default::default()
+            })),
+            StashCommandArgs::Drop(args) => Ok(CliRequest::Stash(gwz_core::StashRequest {
+                meta,
+                op: gwz_core::StashOp::Drop,
+                stash_id: Some(args.stash_id.clone()),
+                ..Default::default()
+            })),
+        }
+    }
+}
+
+impl StashPushArgs {
+    pub(crate) fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
+        if self.include_untracked && self.include_ignored {
+            return Err(CliError::new("-u and -a are mutually exclusive"));
+        }
+        Ok(CliRequest::Stash(gwz_core::StashRequest {
+            meta,
+            op: gwz_core::StashOp::Push,
+            stash_id: None,
+            message: self.message.clone(),
+            include_untracked: self.include_untracked.then_some(true),
+            include_ignored: self.include_ignored.then_some(true),
+            expanded: None,
+            preserve_index: None,
+        }))
+    }
+}
+
 impl MaterializeArgs {
     pub(crate) fn request(&self, meta: gwz_core::RequestMeta) -> Result<CliRequest, CliError> {
         Ok(CliRequest::Materialize(gwz_core::MaterializeRequest {
@@ -512,7 +626,8 @@ impl MaterializeArgs {
         let targets = usize::from(self.lock)
             + usize::from(self.head)
             + usize::from(self.snapshot.is_some())
-            + usize::from(self.tag.is_some());
+            + usize::from(self.tag.is_some())
+            + usize::from(self.switch.is_some());
         if targets > 1 {
             return Err(CliError::new("only one target flag may be supplied"));
         }
@@ -534,6 +649,12 @@ impl MaterializeArgs {
                 name: Some(name.clone()),
                 commit: None,
             })
+        } else if let Some(name) = &self.switch {
+            Ok(gwz_core::MaterializeTarget {
+                kind: gwz_core::MaterializeTargetKind::Branch,
+                name: Some(name.clone()),
+                commit: None,
+            })
         } else {
             Ok(gwz_core::MaterializeTarget {
                 kind: gwz_core::MaterializeTargetKind::Lock,
@@ -541,6 +662,21 @@ impl MaterializeArgs {
                 commit: None,
             })
         }
+    }
+}
+
+impl SnapshotArgs {
+    pub(crate) fn source(&self) -> Option<gwz_core::SnapshotSource> {
+        self.branch.as_ref().map(|branch| match branch {
+            Some(name) => gwz_core::SnapshotSource {
+                kind: gwz_core::SnapshotSourceKind::Branch,
+                branch: Some(name.clone()),
+            },
+            None => gwz_core::SnapshotSource {
+                kind: gwz_core::SnapshotSourceKind::Current,
+                branch: None,
+            },
+        })
     }
 }
 

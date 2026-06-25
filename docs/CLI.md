@@ -28,6 +28,8 @@ gwz [OPTIONS] <COMMAND>
 | `forall` | Run a command in each selected member. |
 | `snapshot` | Record or list workspace snapshots. |
 | `tag` | Manage Git tags across workspace repositories. |
+| `branch` | Manage local Git branches across workspace members. |
+| `stash` | Manage coordinated Git stash bundles across workspace members. |
 | `materialize` | Materialize workspace members to a target. |
 | `pull` | Update workspace members to an explicit target. |
 | `push` | Push workspace member refs. |
@@ -201,6 +203,7 @@ Options:
 | Option | Meaning |
 | --- | --- |
 | `--list` | List existing snapshots instead of recording one. |
+| `--branch[=<name>]` | Snapshot the current attached branch for all selected members, or a named local branch without switching. |
 
 Omitting `[name]` also lists snapshots.
 
@@ -239,10 +242,48 @@ Target options:
 | `--head` | Materialize repository heads. |
 | `--snapshot <name>` | Materialize a workspace snapshot. |
 | `--tag <name>` | Materialize a workspace tag. |
+| `--switch <branch>` | Switch selected members to an existing local branch and rewrite the lock from observed state. |
 
 Only one target flag may be supplied.
 
 See [commands/materialize.md](commands/materialize.md).
+
+### `gwz branch`
+
+```text
+gwz branch [OPTIONS]
+```
+
+Options:
+
+| Option | Meaning |
+| --- | --- |
+| `--list` | List local branches across selected members. This is the default. |
+| `--create <name>` | Create a local branch across selected members. |
+| `--from <ref>` | Start point for `--create`. Defaults to `HEAD`. |
+| `--switch` | Switch selected members to the created branch after `--create`. |
+| `--delete <name>` | Delete a non-current local branch across selected members. |
+| `--merge <source>` | Merge a source ref into each selected member's current attached branch. |
+
+See [commands/branch.md](commands/branch.md).
+
+### `gwz stash`
+
+```text
+gwz stash <COMMAND>
+```
+
+Subcommands:
+
+| Subcommand | Meaning |
+| --- | --- |
+| `push [-u|-a] [-m <message>]` | Push a coordinated stash bundle for selected members. |
+| `list [--expanded]` | List local coordinated stash bundles. |
+| `apply [stash-id]` | Apply a bundle and keep native stash payloads. |
+| `pop [stash-id]` | Apply a bundle and remove native stash payloads. |
+| `drop <stash-id>` | Remove native stash payloads without applying them. |
+
+See [commands/stash.md](commands/stash.md).
 
 ### `gwz pull`
 

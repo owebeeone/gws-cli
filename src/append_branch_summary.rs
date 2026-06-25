@@ -1,4 +1,3 @@
-
 use crate::*;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -17,6 +16,8 @@ pub(crate) struct CliResponse {
     pub(crate) workspace_git_status: Option<gwz_core::WorkspaceGitStatus>,
     pub(crate) status_mode: Option<gwz_core::StatusMode>,
     pub(crate) listing: Option<ArtifactListing>,
+    pub(crate) branch_repos: Option<Vec<gwz_core::BranchRepoSummary>>,
+    pub(crate) stash_bundles: Option<Vec<gwz_core::StashBundle>>,
     /// forall's trailing summary — rendered verbatim (it already streamed member output live).
     pub(crate) summary: Option<String>,
 }
@@ -28,6 +29,32 @@ impl CliResponse {
             workspace_git_status: None,
             status_mode: None,
             listing: None,
+            branch_repos: None,
+            stash_bundles: None,
+            summary: None,
+        }
+    }
+
+    pub(crate) fn branch(response: gwz_core::BranchResponse) -> Self {
+        Self {
+            envelope: response.response,
+            workspace_git_status: None,
+            status_mode: None,
+            listing: None,
+            branch_repos: response.repos,
+            stash_bundles: None,
+            summary: None,
+        }
+    }
+
+    pub(crate) fn stash(response: gwz_core::StashResponse) -> Self {
+        Self {
+            envelope: response.response,
+            workspace_git_status: None,
+            status_mode: None,
+            listing: None,
+            branch_repos: None,
+            stash_bundles: response.bundles,
             summary: None,
         }
     }
@@ -52,6 +79,8 @@ impl CliResponse {
             workspace_git_status: None,
             status_mode: None,
             listing: Some(listing),
+            branch_repos: None,
+            stash_bundles: None,
             summary: None,
         }
     }
@@ -80,7 +109,11 @@ pub(crate) fn render_listing_text(listing: &ArtifactListing) -> String {
             if snapshots.is_empty() {
                 return "no snapshots".to_owned();
             }
-            let mut lines = vec![format!("{} snapshot{}:", snapshots.len(), plural(snapshots.len()))];
+            let mut lines = vec![format!(
+                "{} snapshot{}:",
+                snapshots.len(),
+                plural(snapshots.len())
+            )];
             for snapshot in snapshots {
                 lines.push(format!(
                     "  {}\t{}\t{}\t({} member{})",
@@ -164,6 +197,12 @@ pub(crate) fn render_human_response(response: &CliResponse) -> String {
     if let Some(workspace_status) = &response.workspace_git_status {
         return render_human_status_response(response, workspace_status);
     }
+    if let Some(repos) = &response.branch_repos {
+        return render_branch_response(response, repos);
+    }
+    if let Some(bundles) = &response.stash_bundles {
+        return render_stash_response(response, bundles);
+    }
 
     let mut lines = vec![format!(
         "status: {:?}",
@@ -185,6 +224,73 @@ pub(crate) fn render_human_response(response: &CliResponse) -> String {
             line.push_str(&format!(" {message}"));
         }
         lines.push(line);
+    }
+    for error in &response.envelope.errors {
+        lines.push(format!("{:?}: {}", error.code, error.message));
+    }
+    lines.join("\n")
+}
+
+pub(crate) fn render_branch_response(
+    response: &CliResponse,
+    repos: &[gwz_core::BranchRepoSummary],
+) -> String {
+    let mut lines = vec![format!(
+        "status: {:?}",
+        response.envelope.meta.aggregate_status
+    )];
+    for repo in repos {
+        let branch = repo
+            .branch
+            .as_deref()
+            .or(repo.current_branch.as_deref())
+            .unwrap_or("(detached)");
+        let mut line = format!(
+            "{} {} {:?} {}",
+            repo.member_id, repo.member_path, repo.result, branch
+        );
+        if let Some(head) = &repo.head {
+            line.push_str(&format!(" {head}"));
+        }
+        if let Some(source_ref) = &repo.source_ref {
+            line.push_str(&format!(" from {source_ref}"));
+        }
+        if let Some(resulting_commit) = &repo.resulting_commit {
+            line.push_str(&format!(" -> {resulting_commit}"));
+        }
+        if !repo.conflict_paths.is_empty() {
+            line.push_str(&format!(" conflicts: {}", repo.conflict_paths.join(",")));
+        }
+        lines.push(line);
+    }
+    for error in &response.envelope.errors {
+        lines.push(format!("{:?}: {}", error.code, error.message));
+    }
+    lines.join("\n")
+}
+
+pub(crate) fn render_stash_response(
+    response: &CliResponse,
+    bundles: &[gwz_core::StashBundle],
+) -> String {
+    let mut lines = vec![format!(
+        "status: {:?}",
+        response.envelope.meta.aggregate_status
+    )];
+    for bundle in bundles {
+        lines.push(format!(
+            "{} {} ({} member{})",
+            bundle.stash_id,
+            bundle.created_at,
+            bundle.members.len(),
+            if bundle.members.len() == 1 { "" } else { "s" }
+        ));
+    }
+    for member in &response.envelope.members {
+        lines.push(format!(
+            "{} {} {:?}",
+            member.member_id, member.member_path, member.status
+        ));
     }
     for error in &response.envelope.errors {
         lines.push(format!("{:?}: {}", error.code, error.message));
@@ -634,6 +740,82 @@ pub(crate) fn response_json(response: &CliResponse) -> serde_json::Value {
         "members": response.envelope.members.iter().map(member_json).collect::<Vec<_>>(),
         "errors": response.envelope.errors.iter().map(error_json).collect::<Vec<_>>(),
         "workspace_git_status": response.workspace_git_status.as_ref().map(workspace_git_status_json),
+        "branch_repos": response.branch_repos.as_ref().map(|repos| {
+            repos.iter().map(branch_repo_json).collect::<Vec<_>>()
+        }),
+        "stash_bundles": response.stash_bundles.as_ref().map(|bundles| {
+            bundles.iter().map(stash_bundle_json).collect::<Vec<_>>()
+        }),
+    })
+}
+
+pub(crate) fn branch_repo_json(repo: &gwz_core::BranchRepoSummary) -> serde_json::Value {
+    serde_json::json!({
+        "member_id": repo.member_id,
+        "member_path": repo.member_path,
+        "source_kind": format!("{:?}", repo.source_kind),
+        "result": format!("{:?}", repo.result),
+        "branch": repo.branch,
+        "current_branch": repo.current_branch,
+        "detached": repo.detached,
+        "unborn": repo.unborn,
+        "head": repo.head,
+        "upstream": repo.upstream,
+        "ahead": repo.ahead,
+        "behind": repo.behind,
+        "source_ref": repo.source_ref,
+        "target_branch": repo.target_branch,
+        "resulting_commit": repo.resulting_commit,
+        "conflict_paths": repo.conflict_paths,
+    })
+}
+
+pub(crate) fn stash_bundle_json(bundle: &gwz_core::StashBundle) -> serde_json::Value {
+    serde_json::json!({
+        "schema": bundle.schema,
+        "workspace_id": bundle.workspace_id,
+        "stash_id": bundle.stash_id,
+        "created_at": bundle.created_at,
+        "message_suffix": bundle.message_suffix,
+        "include_untracked": bundle.include_untracked,
+        "include_ignored": bundle.include_ignored,
+        "selected_members": bundle.selected_members,
+        "members": bundle.members.iter().map(stash_bundle_member_json).collect::<Vec<_>>(),
+        "warnings": bundle.warnings.iter().map(|warning| serde_json::json!({
+            "code": warning.code,
+            "message": warning.message,
+            "member_id": warning.member_id,
+        })).collect::<Vec<_>>(),
+        "drift": bundle.drift.iter().map(|drift| serde_json::json!({
+            "code": drift.code,
+            "message": drift.message,
+            "member_id": drift.member_id,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+pub(crate) fn stash_bundle_member_json(member: &gwz_core::StashBundleMember) -> serde_json::Value {
+    serde_json::json!({
+        "member_id": member.member_id,
+        "path": member.path,
+        "participation": format!("{:?}", member.participation),
+        "push_lifecycle": format!("{:?}", member.push_lifecycle),
+        "restore_state": format!("{:?}", member.restore_state),
+        "branch_before": member.branch_before,
+        "head_before": member.head_before,
+        "full_stash_message": member.full_stash_message,
+        "dirty_summary": {
+            "staged": member.dirty_summary.staged,
+            "unstaged": member.dirty_summary.unstaged,
+            "untracked": member.dirty_summary.untracked,
+            "ignored": member.dirty_summary.ignored,
+        },
+        "native_stash_object_id": member.native_stash_object_id,
+        "native_stash_display_ref": member.native_stash_display_ref,
+        "error": member.error.as_ref().map(|error| serde_json::json!({
+            "code": error.code,
+            "message": error.message,
+        })),
     })
 }
 
