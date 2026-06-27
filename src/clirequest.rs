@@ -187,7 +187,7 @@ pub(crate) enum CliRequest {
     Capture(gwz_core::CaptureRequest),
     Commit(gwz_core::CommitRequest),
     Stage(gwz_core::StageRequest),
-    ListSnapshots,
+    ListSnapshots(gwz_core::ListSnapshotsRequest),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -385,7 +385,9 @@ impl Cli {
                 _ if args.branch.is_some() => Err(CliError::new(
                     "--branch requires a snapshot name and cannot be combined with --list",
                 )),
-                _ => Ok(CliRequest::ListSnapshots),
+                _ => Ok(CliRequest::ListSnapshots(gwz_core::ListSnapshotsRequest {
+                    meta,
+                })),
             },
             CommandArgs::Tag(args) => {
                 let op = if args.push {

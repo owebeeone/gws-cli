@@ -3,7 +3,7 @@ use crate::*;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ArtifactListing {
     Tags(Vec<gwz_core::TagInfo>),
-    Snapshots(Vec<gwz_core::artifact::SnapshotArtifact>),
+    Snapshots(Vec<gwz_core::SnapshotInfo>),
     Members {
         entries: Vec<gwz_core::MemberEntry>,
         local: bool,
@@ -59,23 +59,9 @@ impl CliResponse {
         }
     }
 
-    /// A read-only tag/snapshot listing — carries a trivial Ok envelope (no operation ran);
-    /// `render_response` renders the `listing` rather than the envelope.
-    pub(crate) fn listing(listing: ArtifactListing) -> Self {
+    pub(crate) fn listing(response: gwz_core::ResponseEnvelope, listing: ArtifactListing) -> Self {
         Self {
-            envelope: gwz_core::ResponseEnvelope {
-                meta: gwz_core::ResponseMeta {
-                    request_id: String::new(),
-                    schema_version: String::new(),
-                    action: gwz_core::ActionKind::Status,
-                    aggregate_status: gwz_core::AggregateStatus::Ok,
-                    operation_id: None,
-                    message: None,
-                    attribution: None,
-                },
-                members: Vec::new(),
-                errors: Vec::new(),
-            },
+            envelope: response,
             workspace_git_status: None,
             status_mode: None,
             listing: Some(listing),
@@ -117,11 +103,11 @@ pub(crate) fn render_listing_text(listing: &ArtifactListing) -> String {
             for snapshot in snapshots {
                 lines.push(format!(
                     "  {}\t{}\t{}\t({} member{})",
-                    snapshot.snapshot_id,
+                    snapshot.name,
                     snapshot.created_at,
-                    snapshot.created_by.actor_id,
-                    snapshot.members.len(),
-                    plural(snapshot.members.len())
+                    snapshot.created_by,
+                    snapshot.members,
+                    plural(snapshot.members as usize)
                 ));
             }
             lines.join("\n")
@@ -157,10 +143,10 @@ pub(crate) fn listing_json(listing: &ArtifactListing) -> serde_json::Value {
             "entries": snapshots
                 .iter()
                 .map(|snapshot| json!({
-                    "name": snapshot.snapshot_id,
+                    "name": snapshot.name,
                     "created_at": snapshot.created_at,
-                    "created_by": snapshot.created_by.actor_id,
-                    "members": snapshot.members.len(),
+                    "created_by": snapshot.created_by,
+                    "members": snapshot.members,
                 }))
                 .collect::<Vec<_>>(),
         }),

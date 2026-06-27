@@ -467,7 +467,7 @@ pub(crate) fn parses_command_matrix() {
     ));
     assert!(matches!(
         parse(strings(["snapshot"])).request,
-        CliRequest::ListSnapshots
+        CliRequest::ListSnapshots(_)
     ));
     assert!(matches!(
         parse(strings(["snapshot", "snap"])).request,

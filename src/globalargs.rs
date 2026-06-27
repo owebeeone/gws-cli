@@ -588,7 +588,9 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
         CliRequest::Tag(request) => {
             gwz_core::workspace_ops::handle_tag(&backend, start, request.clone(), operation_id).map(
                 |response| match response.tags {
-                    Some(tags) => CliResponse::listing(ArtifactListing::Tags(tags)),
+                    Some(tags) => {
+                        CliResponse::listing(response.response, ArtifactListing::Tags(tags))
+                    }
                     None => CliResponse::envelope(response.response),
                 },
             )
@@ -637,9 +639,20 @@ pub(crate) fn execute_invocation(invocation: &CliInvocation) -> Result<CliRespon
             gwz_core::workspace_ops::handle_stage(&backend, start, request.clone(), operation_id)
                 .map(|response| CliResponse::envelope(response.response))
         }
-        CliRequest::ListSnapshots => gwz_core::workspace_ops::resolve_workspace_root(start, None)
-            .and_then(|root| gwz_core::artifact::list_snapshots(&root))
-            .map(|snapshots| CliResponse::listing(ArtifactListing::Snapshots(snapshots))),
+        CliRequest::ListSnapshots(request) => {
+            gwz_core::workspace_ops::handle_list_snapshots(start, request.clone(), operation_id)
+                .map(|response| CliResponse {
+                    envelope: response.response,
+                    workspace_git_status: None,
+                    status_mode: None,
+                    listing: Some(ArtifactListing::Snapshots(
+                        response.snapshots.unwrap_or_default(),
+                    )),
+                    branch_repos: None,
+                    stash_bundles: None,
+                    summary: None,
+                })
+        }
     };
     response.map_err(CliError::from_model)
 }
