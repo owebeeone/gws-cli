@@ -39,28 +39,64 @@ pub(crate) struct GlobalArgs {
     pub(crate) root: Option<String>,
 
     #[arg(
+        long = "target",
+        global = true,
+        value_name = "selector",
+        help = "Select a workspace target",
+        long_help = "Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be supplied more than once."
+    )]
+    pub(crate) targets: Vec<String>,
+
+    #[arg(
+        long = "no-target",
+        global = true,
+        value_name = "selector",
+        help = "Exclude a workspace target",
+        long_help = "Exclude a workspace target after includes are expanded. May be supplied more than once."
+    )]
+    pub(crate) exclude_targets: Vec<String>,
+
+    #[arg(
         long = "member",
         global = true,
-        value_name = "member-id",
-        help = "Select a workspace member by id",
-        long_help = "Select a workspace member by id. May be supplied more than once."
+        value_name = "selector",
+        help = "Compatibility alias for --target",
+        long_help = "Compatibility alias for `--target`. Selects a workspace target by selector and may be supplied more than once."
     )]
     pub(crate) members: Vec<String>,
+
+    #[arg(
+        long = "no-member",
+        global = true,
+        value_name = "selector",
+        help = "Compatibility alias for --no-target",
+        long_help = "Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied more than once."
+    )]
+    pub(crate) exclude_members: Vec<String>,
 
     #[arg(
         long = "member-path",
         global = true,
         value_name = "member-path",
-        help = "Select a workspace member by path",
-        long_help = "Select a workspace member by path. May be supplied more than once."
+        help = "Select a workspace target by member path",
+        long_help = "Compatibility path selector. Selects a workspace target by member path and may be supplied more than once."
     )]
     pub(crate) paths: Vec<String>,
 
     #[arg(
+        long = "no-member-path",
+        global = true,
+        value_name = "member-path",
+        help = "Exclude a workspace target by member path",
+        long_help = "Compatibility path exclusion. Excludes a workspace target by member path and may be supplied more than once."
+    )]
+    pub(crate) exclude_paths: Vec<String>,
+
+    #[arg(
         long,
         global = true,
-        help = "Select all workspace members",
-        long_help = "Select all workspace members. Cannot be combined with `--member` or `--member-path`."
+        help = "Select all workspace targets",
+        long_help = "Select all workspace targets (`@all`). May be combined with target exclusions."
     )]
     pub(crate) all: bool,
 
@@ -196,10 +232,10 @@ pub(crate) enum CommandArgs {
         after_long_help = STATUS_AFTER
     )]
     Status(StatusArgs),
-    #[command(about = "List the workspace's members (id, path; absolute or --local)")]
+    #[command(about = "List workspace targets (id, path; absolute or --local)")]
     Ls(LsArgs),
     #[command(
-        about = "Run a command in each member: gwz forall [projects…] -- <cmd>  |  -c <string>"
+        about = "Run a command in selected workspace targets: gwz forall [projects…] -- <cmd>  |  -c <string>"
     )]
     Forall(ForallArgs),
     #[command(
@@ -239,7 +275,7 @@ pub(crate) enum CommandArgs {
     )]
     Pull(PullArgs),
     #[command(
-        about = "Push workspace member refs",
+        about = "Push workspace target refs",
         long_about = PUSH_LONG,
         after_long_help = PUSH_AFTER
     )]

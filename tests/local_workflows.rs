@@ -12,7 +12,7 @@ fn help_flags_print_usage() {
         let output = gwz(temp.path()).arg(flag).output().unwrap();
 
         assert_success(&output);
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = normalized_stdout(&output);
         assert!(stdout.contains("Usage: gwz"));
         assert!(stdout.contains("-h, --help"));
         assert!(stdout.contains("init"));
@@ -26,7 +26,7 @@ fn help_command_prints_detailed_subcommand_usage() {
     let output = gwz(temp.path()).args(["help", "status"]).output().unwrap();
 
     assert_success(&output);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = normalized_stdout(&output);
     assert!(stdout.contains("Usage: gwz status"));
     assert!(stdout.contains("--no-combined"));
     assert!(stdout.contains("--porcelain"));
@@ -42,7 +42,7 @@ fn subcommand_help_prints_detailed_subcommand_usage() {
         .unwrap();
 
     assert_success(&output);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = normalized_stdout(&output);
     assert!(stdout.contains("Usage: gwz status"));
     assert!(stdout.contains("--no-files"));
     assert!(stdout.contains("--no-branches"));
@@ -346,7 +346,15 @@ fn pull_head_and_push_work_with_local_remote() {
     );
     assert_success(
         &gwz(temp.path())
-            .args(["--root", temp.path_str(), "push", "--remote", "origin"])
+            .args([
+                "--root",
+                temp.path_str(),
+                "--no-target",
+                "@root",
+                "push",
+                "--remote",
+                "origin",
+            ])
             .output()
             .unwrap(),
     );
@@ -459,6 +467,8 @@ fn push_streams_member_lifecycle_events_as_jsonl() {
             "--root",
             temp.path_str(),
             "--jsonl",
+            "--no-target",
+            "@root",
             "push",
             "--remote",
             "origin",
@@ -915,6 +925,12 @@ fn json_lines(output: &Output) -> Vec<Value> {
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect()
+}
+
+fn normalized_stdout(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stdout)
+        .replace("\r\n", "\n")
+        .replace("Usage: gwz.exe", "Usage: gwz")
 }
 
 fn assert_jsonl_lifecycle(output: &Output) {

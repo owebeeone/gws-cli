@@ -49,16 +49,23 @@ pub(crate) fn execute_forall(
     operation_id: String,
 ) -> Result<crate::CliResponse, gwz_core::model::ModelError> {
     let root = gwz_core::workspace_ops::resolve_workspace_root(start, meta.workspace.as_ref())?;
-    // Resolve the member list via the ls op, then narrow by the positional projects.
+    let mut ls_meta = meta.clone();
+    if !projects.is_empty() {
+        let selection = ls_meta.selection.get_or_insert_with(Default::default);
+        selection.targets.extend(projects.iter().cloned());
+    }
+
+    // Resolve the target list via the ls op. Positional projects are selector tokens, so @root
+    // and future @sets are resolved by core instead of by a local post-filter.
     let listed = gwz_core::workspace_ops::handle_ls(
         start,
         gwz_core::LsRequest {
-            meta: meta.clone(),
+            meta: ls_meta,
             include_unmaterialized: None,
         },
         operation_id.clone(),
     )?;
-    let members = filter_projects(listed.members.unwrap_or_default(), projects)?;
+    let members = listed.members.unwrap_or_default();
 
     let request = ExecRequest {
         meta: meta.clone(),
@@ -107,8 +114,9 @@ pub(crate) fn execute_forall(
     })
 }
 
-/// Narrow `members` to those whose `id` or `path` matches a requested project. An unknown project
-/// is an error (resolved here, in execute — parse can't see the manifest). Empty `projects` = all.
+/// Compatibility helper for old direct unit tests. Runtime selector filtering is delegated to
+/// `handle_ls` so @root and @sets stay core-owned.
+#[cfg(test)]
 pub(crate) fn filter_projects(
     members: Vec<MemberEntry>,
     projects: &[String],
@@ -191,7 +199,14 @@ fn run_one(req: &ExecRequest, member: &MemberEntry, root: &str) -> ExecResult {
         .env("GWZ_MEMBER_ID", &member.id)
         .env("GWZ_MEMBER_PATH", &member.path)
         .env("GWZ_MEMBER_ABSPATH", &member.abspath)
-        .env("GWZ_ROOT", root);
+        .env("GWZ_ROOT", root)
+        .env(
+            "GWZ_TARGET_KIND",
+            match member.target_kind {
+                Some(gwz_core::TargetKind::Root) => "root",
+                _ => "member",
+            },
+        );
     match command.status() {
         Ok(status) => ExecResult {
             id: member.id.clone(),
@@ -242,6 +257,7 @@ mod tests {
             path: path.to_owned(),
             abspath: std::env::temp_dir().to_string_lossy().into_owned(),
             materialized: true,
+            target_kind: Some(gwz_core::TargetKind::Member),
         }
     }
 
@@ -260,13 +276,47 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    fn substitution_command() -> Vec<&'static str> {
+        vec![
+            "cmd",
+            "/C",
+            r#"if "{@}"=="repos/app" (exit /B 0) else (exit /B 1)"#,
+        ]
+    }
+
+    #[cfg(not(windows))]
+    fn substitution_command() -> Vec<&'static str> {
+        vec!["test", "{@}", "=", "repos/app"]
+    }
+
+    #[cfg(windows)]
+    fn member_env_script() -> &'static str {
+        r#"if "%GWZ_MEMBER_PATH%"=="repos/app" if "%GWZ_MEMBER_ID%"=="mem_app" if "%GWZ_ROOT%"=="/root" exit /B 0 & exit /B 1"#
+    }
+
+    #[cfg(not(windows))]
+    fn member_env_script() -> &'static str {
+        r#"[ "$GWZ_MEMBER_PATH" = "repos/app" ] && [ "$GWZ_MEMBER_ID" = "mem_app" ] && [ "$GWZ_ROOT" = "/root" ]"#
+    }
+
+    #[cfg(windows)]
+    fn failure_command() -> Vec<&'static str> {
+        vec!["cmd", "/C", "exit /B 1"]
+    }
+
+    #[cfg(not(windows))]
+    fn failure_command() -> Vec<&'static str> {
+        vec!["false"]
+    }
+
     #[test]
     fn argv_substitutes_at_token() {
-        // `test repos/app = repos/app` → exit 0, proving `{@}` → member path.
+        // The child checks its argv, proving `{@}` is replaced with the member path.
         let results = run_forall(
             &request(
                 ExecMode::Argv,
-                &["test", "{@}", "=", "repos/app"],
+                &substitution_command(),
                 vec![member("mem_app", "repos/app")],
                 false,
             ),
@@ -279,11 +329,10 @@ mod tests {
 
     #[test]
     fn shell_sees_member_env() {
-        let script = r#"[ "$GWZ_MEMBER_PATH" = "repos/app" ] && [ "$GWZ_MEMBER_ID" = "mem_app" ] && [ "$GWZ_ROOT" = "/root" ]"#;
         let results = run_forall(
             &request(
                 ExecMode::Shell,
-                &[script],
+                &[member_env_script()],
                 vec![member("mem_app", "repos/app")],
                 false,
             ),
@@ -319,7 +368,7 @@ mod tests {
         let results = run_forall(
             &request(
                 ExecMode::Argv,
-                &["false"],
+                &failure_command(),
                 vec![member("mem_app", "repos/app")],
                 false,
             ),
@@ -355,16 +404,16 @@ mod tests {
     #[test]
     fn stops_at_first_failure_unless_continue() {
         let two = || vec![member("mem_a", "a"), member("mem_b", "b")];
-        // First member runs `false` (exit 1); default stops → only one result.
+        // First member exits 1; default stops after one result.
         let stopped = run_forall(
-            &request(ExecMode::Argv, &["false"], two(), false),
+            &request(ExecMode::Argv, &failure_command(), two(), false),
             true,
             "/root",
         );
         assert_eq!(stopped.len(), 1, "stopped at the first failure");
         // continue_on_fail runs the rest.
         let all = run_forall(
-            &request(ExecMode::Argv, &["false"], two(), true),
+            &request(ExecMode::Argv, &failure_command(), two(), true),
             true,
             "/root",
         );
