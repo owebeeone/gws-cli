@@ -49,16 +49,23 @@ pub(crate) fn execute_forall(
     operation_id: String,
 ) -> Result<crate::CliResponse, gwz_core::model::ModelError> {
     let root = gwz_core::workspace_ops::resolve_workspace_root(start, meta.workspace.as_ref())?;
-    // Resolve the member list via the ls op, then narrow by the positional projects.
+    let mut ls_meta = meta.clone();
+    if !projects.is_empty() {
+        let selection = ls_meta.selection.get_or_insert_with(Default::default);
+        selection.targets.extend(projects.iter().cloned());
+    }
+
+    // Resolve the target list via the ls op. Positional projects are selector tokens, so @root
+    // and future @sets are resolved by core instead of by a local post-filter.
     let listed = gwz_core::workspace_ops::handle_ls(
         start,
         gwz_core::LsRequest {
-            meta: meta.clone(),
+            meta: ls_meta,
             include_unmaterialized: None,
         },
         operation_id.clone(),
     )?;
-    let members = filter_projects(listed.members.unwrap_or_default(), projects)?;
+    let members = listed.members.unwrap_or_default();
 
     let request = ExecRequest {
         meta: meta.clone(),
@@ -107,8 +114,9 @@ pub(crate) fn execute_forall(
     })
 }
 
-/// Narrow `members` to those whose `id` or `path` matches a requested project. An unknown project
-/// is an error (resolved here, in execute — parse can't see the manifest). Empty `projects` = all.
+/// Compatibility helper for old direct unit tests. Runtime selector filtering is delegated to
+/// `handle_ls` so @root and @sets stay core-owned.
+#[cfg(test)]
 pub(crate) fn filter_projects(
     members: Vec<MemberEntry>,
     projects: &[String],
@@ -191,7 +199,14 @@ fn run_one(req: &ExecRequest, member: &MemberEntry, root: &str) -> ExecResult {
         .env("GWZ_MEMBER_ID", &member.id)
         .env("GWZ_MEMBER_PATH", &member.path)
         .env("GWZ_MEMBER_ABSPATH", &member.abspath)
-        .env("GWZ_ROOT", root);
+        .env("GWZ_ROOT", root)
+        .env(
+            "GWZ_TARGET_KIND",
+            match member.target_kind {
+                Some(gwz_core::TargetKind::Root) => "root",
+                _ => "member",
+            },
+        );
     match command.status() {
         Ok(status) => ExecResult {
             id: member.id.clone(),
@@ -242,6 +257,7 @@ mod tests {
             path: path.to_owned(),
             abspath: std::env::temp_dir().to_string_lossy().into_owned(),
             materialized: true,
+            target_kind: Some(gwz_core::TargetKind::Member),
         }
     }
 

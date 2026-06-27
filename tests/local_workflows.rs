@@ -346,7 +346,15 @@ fn pull_head_and_push_work_with_local_remote() {
     );
     assert_success(
         &gwz(temp.path())
-            .args(["--root", temp.path_str(), "push", "--remote", "origin"])
+            .args([
+                "--root",
+                temp.path_str(),
+                "--no-target",
+                "@root",
+                "push",
+                "--remote",
+                "origin",
+            ])
             .output()
             .unwrap(),
     );
@@ -459,6 +467,8 @@ fn push_streams_member_lifecycle_events_as_jsonl() {
             "--root",
             temp.path_str(),
             "--jsonl",
+            "--no-target",
+            "@root",
             "push",
             "--remote",
             "origin",

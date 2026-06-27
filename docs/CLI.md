@@ -38,15 +38,16 @@ Commands:
   add          Stage file contents across workspace repos (multi-repo git add)
   repo         Manage workspace repositories (add an existing repo, or create one)
   status       Show workspace git status
-  ls           List the workspace's members (id, path; absolute or --local)
-  forall       Run a command in each member: gwz forall [projects…] -- <cmd>  |  -c <string>
+  ls           List workspace targets (id, path; absolute or --local)
+  forall       Run a command in selected workspace targets: gwz forall [projects…] -- <cmd>  |  -c
+               <string>
   snapshot     Record the current workspace selection
   tag          Manage git tags across workspace repos (create/list/delete)
   branch       Manage git branches across workspace members
   stash        Manage coordinated git stashes across workspace members
   materialize  Materialize workspace members to a target
   pull         Update workspace members to an explicit target
-  push         Push workspace member refs
+  push         Push workspace target refs
   capture      Record the live worktree state into the lock (no mutation)
   commit       Commit staged changes across members and the workspace root
   help         Print this message or the help of the given subcommand(s)
@@ -62,14 +63,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -170,14 +188,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -263,14 +298,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -352,11 +404,28 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -437,14 +506,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -520,14 +606,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -602,14 +705,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -684,14 +804,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -780,14 +917,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -844,7 +998,7 @@ Examples:
 Command page: [ls](commands/ls.md).
 
 ```text
-List the workspace's members (id, path; absolute or --local)
+List workspace targets (id, path; absolute or --local)
 
 Usage: gwz ls [OPTIONS]
 
@@ -862,14 +1016,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -920,7 +1091,7 @@ Global Options:
 Command page: [forall](commands/forall.md).
 
 ```text
-Run a command in each member: gwz forall [projects…] -- <cmd>  |  -c <string>
+Run a command in selected workspace targets: gwz forall [projects…] -- <cmd>  |  -c <string>
 
 Usage: gwz forall [OPTIONS] [projects]... [-- <cmd>...]
 
@@ -945,14 +1116,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1035,14 +1223,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1144,14 +1349,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1251,14 +1473,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1347,14 +1586,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1436,14 +1692,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1509,14 +1782,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1583,14 +1873,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1657,14 +1964,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1731,14 +2055,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1822,14 +2163,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1911,14 +2269,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -1975,11 +2350,13 @@ Examples:
 Command page: [push](commands/push.md).
 
 ```text
-Push workspace member refs to their configured remotes.
+Push workspace target refs to configured remotes.
 
-`gwz push` applies one push request across the selected workspace members. Use
-`--remote` to choose a remote name and selection flags such as `--member`,
-`--member-path`, or `--all` to control which members participate.
+`gwz push` applies one push request across selected workspace targets. By
+default that includes the workspace root (`@root`) plus configured member
+repositories. Use `--remote` to choose a remote name and selectors such as
+`--target`, `--member`, `--member-path`, `--all`, and `--no-target @root` to
+control which targets participate.
 
 Usage: gwz push [OPTIONS]
 
@@ -1991,14 +2368,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -2066,14 +2460,31 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --all
-          Select all workspace members. Cannot be combined with `--member` or `--member-path`.
+          Select all workspace targets (`@all`). May be combined with target exclusions.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.
@@ -2142,11 +2553,28 @@ Global Options:
       --root <path>
           Workspace root. Defaults to the current directory when not supplied.
 
-      --member <member-id>
-          Select a workspace member by id. May be supplied more than once.
+      --target <selector>
+          Select a workspace target such as `@root`, `@all`, a member id, or a member path. May be
+          supplied more than once.
+
+      --no-target <selector>
+          Exclude a workspace target after includes are expanded. May be supplied more than once.
+
+      --member <selector>
+          Compatibility alias for `--target`. Selects a workspace target by selector and may be
+          supplied more than once.
+
+      --no-member <selector>
+          Compatibility alias for `--no-target`. Excludes a workspace target and may be supplied
+          more than once.
 
       --member-path <member-path>
-          Select a workspace member by path. May be supplied more than once.
+          Compatibility path selector. Selects a workspace target by member path and may be supplied
+          more than once.
+
+      --no-member-path <member-path>
+          Compatibility path exclusion. Excludes a workspace target by member path and may be
+          supplied more than once.
 
       --dry-run
           Plan the operation without mutating workspace metadata or member repositories.

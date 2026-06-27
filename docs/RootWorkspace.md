@@ -95,10 +95,16 @@ Commit with one message across repositories that have staged changes:
 gwz commit -m "Update workspace"
 ```
 
-Push member refs:
+Push root and member refs:
 
 ```sh
 gwz push
+```
+
+Push configured members only:
+
+```sh
+gwz --all --no-target @root push
 ```
 
 ## Tag A Coordinated State

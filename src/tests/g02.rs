@@ -212,6 +212,7 @@ pub(crate) fn sample_response(
             message: "remote rejected".to_owned(),
             member_id: Some("mem_app".to_owned()),
             member_path: Some("repos/app".to_owned()),
+            target_kind: None,
             detail: None,
         });
     gwz_core::ResponseEnvelope {
@@ -234,6 +235,7 @@ pub(crate) fn sample_response(
             state: None,
             git_status: None,
             lock_match: None,
+            target_kind: None,
         }],
         errors: Vec::new(),
     }
@@ -249,6 +251,7 @@ pub(crate) fn sample_event() -> gwz_core::OperationEvent {
         severity: gwz_core::Severity::Info,
         member_id: None,
         member_path: None,
+        target_kind: None,
         message: Some("started".to_owned()),
         member: None,
         error: None,

@@ -14,6 +14,7 @@ pub(crate) fn progress_event(
         severity: gwz_core::Severity::Info,
         member_id: member_path.map(|_| "m".to_owned()),
         member_path: member_path.map(str::to_owned),
+        target_kind: None,
         message: None,
         member: None,
         error: None,

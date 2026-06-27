@@ -249,11 +249,6 @@ impl Cli {
         if self.global.json && self.global.jsonl {
             return Err(CliError::new("--json and --jsonl are mutually exclusive"));
         }
-        if self.global.all && (!self.global.members.is_empty() || !self.global.paths.is_empty()) {
-            return Err(CliError::new(
-                "--all cannot be combined with --member or --member-path",
-            ));
-        }
         if let CommandArgs::Status(status) = &self.command {
             status.validate(&self.global)?;
         }
@@ -295,11 +290,23 @@ impl Cli {
     }
 
     pub(crate) fn selection(&self) -> Option<gwz_core::Selection> {
-        if self.global.all || !self.global.members.is_empty() || !self.global.paths.is_empty() {
+        let mut targets = Vec::new();
+        if self.global.all {
+            targets.push("@all".to_owned());
+        }
+        targets.extend(self.global.targets.clone());
+        targets.extend(self.global.members.clone());
+        targets.extend(self.global.paths.clone());
+
+        let mut exclude_targets = self.global.exclude_targets.clone();
+        exclude_targets.extend(self.global.exclude_members.clone());
+        exclude_targets.extend(self.global.exclude_paths.clone());
+
+        if !targets.is_empty() || !exclude_targets.is_empty() {
             Some(gwz_core::Selection {
-                all: self.global.all.then_some(true),
-                member_ids: self.global.members.clone(),
-                paths: self.global.paths.clone(),
+                targets,
+                exclude_targets,
+                ..Default::default()
             })
         } else {
             None
@@ -526,7 +533,7 @@ impl RepoSyncArgs {
                 ));
             }
             meta.selection = Some(gwz_core::Selection {
-                paths: vec![member_path.clone()],
+                targets: vec![member_path.clone()],
                 ..Default::default()
             });
         }

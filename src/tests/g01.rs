@@ -187,8 +187,10 @@ pub(crate) fn parses_global_selection_policy_and_output_flags() {
     let workspace = request.meta.workspace.unwrap();
     assert_eq!(workspace.root, Some("/ws".to_owned()));
     let selection = request.meta.selection.unwrap();
-    assert_eq!(selection.member_ids, vec!["mem_app"]);
-    assert_eq!(selection.paths, vec!["repos/lib"]);
+    assert_eq!(selection.targets, vec!["mem_app", "repos/lib"]);
+    assert!(selection.exclude_targets.is_empty());
+    assert!(selection.member_ids.is_empty());
+    assert!(selection.paths.is_empty());
     let policy = request.meta.policy.unwrap();
     assert_eq!(policy.partial, Some(gwz_core::PartialBehavior::Partial));
     assert_eq!(
@@ -214,7 +216,64 @@ pub(crate) fn capture_verb_parses_with_selection() {
         panic!("expected capture");
     };
     assert_eq!(request.meta.workspace.unwrap().root, Some("/ws".to_owned()));
-    assert_eq!(request.meta.selection.unwrap().member_ids, vec!["mem_app"]);
+    assert_eq!(request.meta.selection.unwrap().targets, vec!["mem_app"]);
+}
+
+#[test]
+pub(crate) fn parses_all_with_target_exclusion_for_ls() {
+    let invocation = parse_args_with_request_id(
+        strings(["--all", "--no-target", "@root", "ls"]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    let CliRequest::Ls { request, .. } = invocation.request else {
+        panic!("expected ls");
+    };
+    let selection = request.meta.selection.unwrap();
+    assert_eq!(selection.targets, vec!["@all"]);
+    assert_eq!(selection.exclude_targets, vec!["@root"]);
+    assert_eq!(selection.all, None);
+    assert!(selection.member_ids.is_empty());
+    assert!(selection.paths.is_empty());
+}
+
+#[test]
+pub(crate) fn parses_target_aliases_into_selector_fields() {
+    let invocation = parse_args_with_request_id(
+        strings([
+            "--target",
+            "@root",
+            "--member",
+            "mem_app",
+            "--member-path",
+            "repos/lib",
+            "--no-target",
+            "@default",
+            "--no-member",
+            "mem_old",
+            "--no-member-path",
+            "repos/old",
+            "status",
+        ]),
+        "req_test",
+        Path::new("/cwd"),
+    )
+    .unwrap();
+
+    let CliRequest::Status(request) = invocation.request else {
+        panic!("expected status");
+    };
+    let selection = request.meta.selection.unwrap();
+    assert_eq!(selection.targets, vec!["@root", "mem_app", "repos/lib"]);
+    assert_eq!(
+        selection.exclude_targets,
+        vec!["@default", "mem_old", "repos/old"]
+    );
+    assert_eq!(selection.all, None);
+    assert!(selection.member_ids.is_empty());
+    assert!(selection.paths.is_empty());
 }
 
 #[test]
@@ -474,7 +533,7 @@ pub(crate) fn parses_command_matrix() {
     assert!(matches!(
         parse(strings(["repo", "sync", "repos/app"])).request,
         CliRequest::RepoSync(ref request)
-            if request.meta.selection.as_ref().unwrap().paths == vec!["repos/app"]
+            if request.meta.selection.as_ref().unwrap().targets == vec!["repos/app"]
     ));
     assert!(matches!(
         parse(strings(["materialize", "--lock"])).request,
@@ -516,7 +575,7 @@ pub(crate) fn parses_command_matrix() {
 #[test]
 pub(crate) fn rejects_invalid_command_combinations_before_core_execution() {
     assert!(parse_result(strings(["--json", "--jsonl", "status"])).is_err());
-    assert!(parse_result(strings(["--all", "--member", "mem_app", "status"])).is_err());
+    assert!(parse_result(strings(["--all", "--member", "mem_app", "status"])).is_ok());
     assert!(parse_result(strings(["--path", "repos/lib", "status"])).is_err());
     assert!(parse_result(strings(["status", "--no-files", "--no-branches"])).is_err());
     assert!(parse_result(strings(["status", "--combined", "--no-combined"])).is_err());
